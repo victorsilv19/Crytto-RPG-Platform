@@ -1,0 +1,19 @@
+services:
+  frontend:
+    build: .
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      - "3001:3001"
+    volumes:
+      - db_data:/app/src
+    environment:
+      - PORT=3001
+
+volumes:
+  db_data:
