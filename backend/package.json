@@ -1,0 +1,17 @@
+{
+  "name": "crytto-rpg-backend",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "better-sqlite3": "^9.4.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}
