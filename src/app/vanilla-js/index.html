@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crytto - RPG Streaming Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'crytto-red': '#b91c1c',
+                        'crytto-dark': '#0a0a0a',
+                        'crytto-gray': '#1a1a1a'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #0a0a0a;
+            color: #e5e5e5;
+            background-image: 
+                radial-gradient(circle at 25% 25%, rgba(185, 28, 28, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(185, 28, 28, 0.1) 0%, transparent 50%);
+        }
+        .card {
+            background: #1a1a1a;
+            border: 1px solid rgba(185, 28, 28, 0.2);
+        }
+        .btn-primary {
+            background: #b91c1c;
+            color: white;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            background: #991b1b;
+        }
+        .hidden { display: none; }
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="border-b border-red-900/20 bg-gray-900 px-6 py-4">
+        <div class="flex items-center justify-between max-w-7xl mx-auto">
+            <div class="flex items-center">
+                <h1 class="text-2xl font-bold text-crytto-red">CRYTTO</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="bg-gray-800 px-3 py-1 rounded-full border border-crytto-red/30" id="balance">
+                    💰 <span id="crytts-count">1250</span> Crytts
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm" id="user-type-badge">👑 Mestre</span>
+                    <button onclick="toggleUserType()" class="text-xs bg-gray-700 px-2 py-1 rounded hover:bg-gray-600">
+                        Trocar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="bg-gray-800 border-b border-red-900/20">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="flex gap-6 py-4">
+                <button onclick="showScreen('dashboard')" class="nav-btn text-crytto-red border-b-2 border-crytto-red">Dashboard</button>
+                <button onclick="showScreen('marketplace')" class="nav-btn hover:text-crytto-red">Marketplace</button>
+                <button onclick="showScreen('agenda')" class="nav-btn hover:text-crytto-red">Agenda</button>
+                <button onclick="showScreen('personagens')" class="nav-btn hover:text-crytto-red">Personagens</button>
+                <button onclick="showScreen('shop')" class="nav-btn hover:text-crytto-red">Loja Crytts</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto p-6">
+        <!-- Dashboard Screen -->
+        <div id="dashboard-screen" class="screen">
+            <div class="mb-6">
+                <h2 class="text-3xl font-bold mb-2">Bem-vindo ao Crytto!</h2>
+                <p class="text-gray-400">Sua plataforma de streaming de RPG</p>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div class="card p-6 rounded-lg hover:border-crytto-red/50 cursor-pointer" onclick="showScreen('personagens')">
+                    <div class="text-2xl mb-2">🎭</div>
+                    <h3 class="font-semibold mb-1">Personagens</h3>
+                    <p class="text-sm text-gray-400">Gerencie suas fichas</p>
+                </div>
+                <div class="card p-6 rounded-lg hover:border-crytto-red/50 cursor-pointer" onclick="rollDice()">
+                    <div class="text-2xl mb-2">🎲</div>
+                    <h3 class="font-semibold mb-1">Dados</h3>
+                    <p class="text-sm text-gray-400">Rolagem rápida</p>
+                </div>
+                <div class="card p-6 rounded-lg hover:border-crytto-red/50 cursor-pointer" onclick="showScreen('agenda')">
+                    <div class="text-2xl mb-2">📅</div>
+                    <h3 class="font-semibold mb-1">Agenda</h3>
+                    <p class="text-sm text-gray-400">Próximas sessões</p>
+                </div>
+                <div class="card p-6 rounded-lg hover:border-crytto-red/50 cursor-pointer" onclick="changeTheme()">
+                    <div class="text-2xl mb-2">🎨</div>
+                    <h3 class="font-semibold mb-1">Temas</h3>
+                    <p class="text-sm text-gray-400">Personalizar cores</p>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="card p-6 rounded-lg">
+                <h3 class="text-xl font-semibold mb-4">Atividade Recente</h3>
+                <div class="space-y-3">
+                    <div class="flex items-center gap-3 p-3 bg-gray-800/50 rounded">
+                        <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span>Sessão "Reino de Eldoria" concluída</span>
+                        <span class="text-xs text-gray-400 ml-auto">2h atrás</span>
+                    </div>
+                    <div class="flex items-center gap-3 p-3 bg-gray-800/50 rounded">
+                        <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span>Novo personagem criado: "Aragorn"</span>
+                        <span class="text-xs text-gray-400 ml-auto">1 dia atrás</span>
+                    </div>
+                    <div class="flex items-center gap-3 p-3 bg-gray-800/50 rounded">
+                        <div class="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                        <span>Comprou 500 Crytts</span>
+                        <span class="text-xs text-gray-400 ml-auto">3 dias atrás</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Marketplace Screen -->
+        <div id="marketplace-screen" class="screen hidden">
+            <div class="mb-6">
+                <h2 class="text-3xl font-bold mb-2">Marketplace</h2>
+                <p class="text-gray-400">Compre e venda conteúdo de RPG</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="card p-4 rounded-lg">
+                    <div class="bg-gray-700 h-32 rounded mb-3 flex items-center justify-center">
+                        <span class="text-gray-400">🗺️ Mapa</span>
+                    </div>
+                    <h3 class="font-semibold mb-1">Castelo Sombrio</h3>
+                    <p class="text-sm text-gray-400 mb-3">Mapa detalhado para dungeons</p>
+                    <div class="flex items-center justify-between">
+                        <span class="text-crytto-red font-bold">50 Crytts</span>
+                        <button onclick="buyItem('Castelo Sombrio', 50)" class="btn-primary px-3 py-1 rounded text-sm">
+                            Comprar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card p-4 rounded-lg">
+                    <div class="bg-gray-700 h-32 rounded mb-3 flex items-center justify-center">
+                        <span class="text-gray-400">📜 Aventura</span>
+                    </div>
+                    <h3 class="font-semibold mb-1">O Tesouro Perdido</h3>
+                    <p class="text-sm text-gray-400 mb-3">Aventura completa para 4-6 jogadores</p>
+                    <div class="flex items-center justify-between">
+                        <span class="text-crytto-red font-bold">120 Crytts</span>
+                        <button onclick="buyItem('O Tesouro Perdido', 120)" class="btn-primary px-3 py-1 rounded text-sm">
+                            Comprar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card p-4 rounded-lg">
+                    <div class="bg-gray-700 h-32 rounded mb-3 flex items-center justify-center">
+                        <span class="text-gray-400">🎵 Áudio</span>
+                    </div>
+                    <h3 class="font-semibold mb-1">Trilha Épica</h3>
+                    <p class="text-sm text-gray-400 mb-3">Música de fundo para batalhas</p>
+                    <div class="flex items-center justify-between">
+                        <span class="text-crytto-red font-bold">30 Crytts</span>
+                        <button onclick="buyItem('Trilha Épica', 30)" class="btn-primary px-3 py-1 rounded text-sm">
+                            Comprar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Character Screen -->
+        <div id="personagens-screen" class="screen hidden">
+            <div class="mb-6 flex items-center justify-between">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Meus Personagens</h2>
+                    <p class="text-gray-400">Gerencie suas fichas de personagem</p>
+                </div>
+                <button onclick="createCharacter()" class="btn-primary px-4 py-2 rounded">
+                    + Novo Personagem
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="characters-grid">
+                <!-- Characters will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Agenda Screen -->
+        <div id="agenda-screen" class="screen hidden">
+            <div class="mb-6 flex items-center justify-between">
+                <div>
+                    <h2 class="text-3xl font-bold mb-2">Agenda de Sessões</h2>
+                    <p class="text-gray-400">Suas próximas aventuras</p>
+                </div>
+                <button onclick="createSession()" class="btn-primary px-4 py-2 rounded">
+                    + Nova Sessão
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="sessions-grid">
+                <!-- Sessions will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shop-screen" class="screen hidden">
+            <div class="mb-6">
+                <h2 class="text-3xl font-bold mb-2">Loja de Crytts</h2>
+                <p class="text-gray-400">Adquira Crytts para apoiar criadores e comprar conteúdo</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="card p-6 rounded-lg text-center">
+                    <h3 class="text-xl font-bold mb-2">Pacote Básico</h3>
+                    <div class="text-3xl font-bold text-crytto-red mb-2">100</div>
+                    <p class="text-sm text-gray-400 mb-4">Crytts</p>
+                    <div class="text-lg mb-4">R$ 4,99</div>
+                    <button onclick="buyCrytts(100, 4.99)" class="btn-primary w-full py-2 rounded">
+                        Comprar
+                    </button>
+                </div>
+
+                <div class="card p-6 rounded-lg text-center border-crytto-red">
+                    <div class="bg-crytto-red text-white px-2 py-1 rounded text-xs mb-2">POPULAR</div>
+                    <h3 class="text-xl font-bold mb-2">Pacote Herói</h3>
+                    <div class="text-3xl font-bold text-crytto-red mb-2">500</div>
+                    <p class="text-sm text-gray-400 mb-4">Crytts + 75 bônus</p>
+                    <div class="text-lg mb-4">R$ 19,99</div>
+                    <button onclick="buyCrytts(575, 19.99)" class="btn-primary w-full py-2 rounded">
+                        Comprar
+                    </button>
+                </div>
+
+                <div class="card p-6 rounded-lg text-center">
+                    <h3 class="text-xl font-bold mb-2">Pacote Lenda</h3>
+                    <div class="text-3xl font-bold text-crytto-red mb-2">1000</div>
+                    <p class="text-sm text-gray-400 mb-4">Crytts + 200 bônus</p>
+                    <div class="text-lg mb-4">R$ 34,99</div>
+                    <button onclick="buyCrytts(1200, 34.99)" class="btn-primary w-full py-2 rounded">
+                        Comprar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div id="dice-modal" class="modal hidden flex items-center justify-center">
+        <div class="card p-6 rounded-lg max-w-md w-full mx-4">
+            <h3 class="text-xl font-bold mb-4">Rolagem de Dados</h3>
+            <div class="text-center mb-4">
+                <div class="text-6xl font-bold text-crytto-red mb-2" id="dice-result">?</div>
+                <div class="text-gray-400" id="dice-type">D20</div>
+            </div>
+            <div class="flex gap-2 mb-4">
+                <button onclick="rollSpecificDice(4)" class="btn-primary px-3 py-1 rounded text-sm">D4</button>
+                <button onclick="rollSpecificDice(6)" class="btn-primary px-3 py-1 rounded text-sm">D6</button>
+                <button onclick="rollSpecificDice(8)" class="btn-primary px-3 py-1 rounded text-sm">D8</button>
+                <button onclick="rollSpecificDice(10)" class="btn-primary px-3 py-1 rounded text-sm">D10</button>
+                <button onclick="rollSpecificDice(12)" class="btn-primary px-3 py-1 rounded text-sm">D12</button>
+                <button onclick="rollSpecificDice(20)" class="btn-primary px-3 py-1 rounded text-sm">D20</button>
+            </div>
+            <button onclick="closeModal('dice-modal')" class="w-full bg-gray-600 text-white py-2 rounded hover:bg-gray-500">
+                Fechar
+            </button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
