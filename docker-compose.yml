@@ -1,19 +1,43 @@
 services:
-  frontend:
-    build: .
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crytto
+      POSTGRES_PASSWORD: crytto
+      POSTGRES_DB: crytto
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crytto -d crytto"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   backend:
     build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgres://crytto:crytto@db:5432/crytto
+      PGSSL: "false"
     ports:
       - "3001:3001"
-    volumes:
-      - db_data:/app/src
-    environment:
-      - PORT=3001
+
+  frontend:
+    build:
+      context: .
+      args:
+        # Deixamos vazio: no docker-compose o front fala com o back via proxy /api do nginx.
+        VITE_API_URL: ""
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
 
 volumes:
   db_data:

@@ -52,52 +52,50 @@ A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de s
 
 ### 3.2 Backend (crytto-backend)
 - **Tecnologia:** Node.js + Express
-- **Banco de dados:** SQLite via `better-sqlite3`
-- **Responsabilidade:** API REST, regras de negócio, persistência de dados
+- **Banco de dados:** Postgres via driver `pg`, apontando para um serviço gerenciado (Neon ou Supabase). SSL habilitado por padrão em produção.
+- **Responsabilidade:** API REST, regras de negócio, persistência de dados.
 
-### 3.3 Banco de Dados (SQLite)
-- **Tabelas:** `users`, `characters`, `marketplace_items`, `purchases`, `calendar_events`
-- **Persistência:** Volume montado no Cloud Run
+### 3.3 Banco de Dados (Postgres)
+- **Tabelas:** `users`, `characters`, `marketplace_items`, `purchases`, `calendar_events`.
+- **Colunas JSONB:** `banner_colors`, `settings`, `stats`, `skills`, `tags`, `images`, `players` — permitem evoluir o modelo sem migrações complexas.
+- **Persistência:** externa ao Cloud Run — os containers podem ser recriados/escalados sem perda de dados.
 
 ---
 
-## 4. Serviços Google Cloud Utilizados
+## 4. Serviços Utilizados
 
 | Serviço | Uso | Justificativa |
 |---|---|---|
-| **Cloud Run** | Hospedagem dos containers | Serverless, escala automática, paga só pelo uso, sem gerenciar servidores |
-| **Container Registry (GCR)** | Armazenamento das imagens Docker | Integrado nativamente ao Cloud Run |
-| **Cloud Build** (futuro CI/CD) | Pipeline de build automático | Integração com GitHub para deploy automático |
+| **Google Cloud Run** | Hospedagem dos containers | Serverless, escala automática, HTTPS gerenciado, plano gratuito generoso. |
+| **Google Container Registry (GCR)** | Armazenamento das imagens Docker | Integrado nativamente ao Cloud Run. |
+| **Neon / Supabase (Postgres)** | Banco de dados gerenciado | Free tier, backups automáticos, persistência independente do Cloud Run. |
+| **Cloud Build** (futuro CI/CD) | Pipeline de build automático | Integração com GitHub para deploy automático. |
 
 ---
 
 ## 5. Justificativa Técnica das Escolhas
 
-### Por que Google Cloud?
-- Plano gratuito generoso (Cloud Run: 2 milhões de requisições/mês grátis)
-- Fácil deploy de containers sem configurar infraestrutura
-- Interface simples para estudantes e projetos acadêmicos
+### Por que Google Cloud Run?
+- **Sem servidor para gerenciar:** deploy direto de imagem Docker.
+- **Escala para zero:** sem tráfego = sem custo.
+- **HTTPS automático:** certificado SSL provisionado automaticamente.
+- **Plano gratuito generoso** (2 milhões de requisições/mês grátis).
 
-### Por que Cloud Run?
-- **Sem servidor para gerenciar:** deploy direto de imagem Docker
-- **Escala para zero:** quando não há tráfego, não gera custo
-- **HTTPS automático:** certificado SSL provisionado automaticamente
-- **Ideal para MVPs e projetos acadêmicos**
-
-### Por que SQLite?
-- Simplicidade: sem necessidade de provisionar um servidor de banco de dados separado
-- Suficiente para o volume de dados do projeto acadêmico
-- Custo zero (sem Cloud SQL)
+### Por que Postgres gerenciado (Neon / Supabase)?
+- **Persistência real:** o filesystem do Cloud Run é efêmero, então SQLite embarcado não serviria.
+- **Free tier suficiente** para um projeto acadêmico com múltiplos usuários.
+- **Suporte nativo a JSONB**, ideal para os campos flexíveis do modelo (settings, stats, tags).
+- **SSL/TLS ponta a ponta** por padrão.
 
 ---
 
 ## 6. Fluxo de Comunicação
 
-1. Usuário acessa a URL do **crytto-frontend** via HTTPS
-2. O nginx serve os arquivos estáticos do React
-3. Requisições para `/api/*` são redirecionadas pelo nginx para o **crytto-backend**
-4. O backend processa a requisição, consulta/atualiza o SQLite e retorna JSON
-5. O frontend atualiza a interface com os dados recebidos
+1. Usuário acessa a URL do **crytto-frontend** via HTTPS.
+2. O nginx serve os arquivos estáticos do React.
+3. O SPA gera/recupera um `crytto-user-id` anônimo no `localStorage` e chama `POST /api/users` para garantir o registro; depois hidrata perfil, saldo, personagens, itens do marketplace e agenda a partir da API.
+4. Toda criação/edição/remoção (personagens, itens, eventos, perfil, saldo) chama a API REST do backend.
+5. O backend valida, aplica a lógica de negócio (ex.: transação atômica de compra em `/api/marketplace/:id/purchase`) e persiste no Postgres.
 
 ---
 
@@ -137,20 +135,19 @@ A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de s
 
 ## 9. Limitações da Solução Atual
 
-- SQLite não é ideal para múltiplos usuários simultâneos em alta escala
-- Sem autenticação real (login/senha ou OAuth)
-- Sem sistema de upload de arquivos real (imagens via URL)
-- Dados do SQLite podem ser perdidos se o container for recriado sem volume persistente configurado corretamente
+- Sem autenticação real — identidade do usuário é anexada a um UUID persistido no `localStorage`.
+- Upload de arquivos ainda não está implementado (imagens por URL).
+- Streams, chat ao vivo e ranking ainda usam dados mock (não fazem parte da persistência avaliada).
 
 ---
 
 ## 10. Melhorias Futuras
 
-- Migrar SQLite para **Cloud SQL (PostgreSQL)** para maior escalabilidade
-- Implementar autenticação com **Firebase Auth** ou **Google Identity Platform**
-- Adicionar **Cloud Storage** para upload de imagens e assets
-- Implementar **CI/CD com Cloud Build** integrado ao GitHub
-- Adicionar **Cloud CDN** para melhor performance global
+- Implementar autenticação com **Firebase Auth** ou **Google Identity Platform**.
+- Adicionar **Cloud Storage** para upload de imagens e assets.
+- Implementar **CI/CD com Cloud Build** integrado ao GitHub.
+- Adicionar **Cloud CDN** para melhor performance global.
+- Migrar `DATABASE_URL` para o **Secret Manager** do GCP.
 
 ---
 
@@ -160,6 +157,7 @@ A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de s
 1. Instalar [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
 2. Instalar [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 3. Criar um projeto no [Google Cloud Console](https://console.cloud.google.com)
+4. Provisionar um Postgres gerenciado gratuito (**Neon** ou **Supabase**) e copiar a `DATABASE_URL`.
 
 ### Passos
 ```bash
@@ -173,13 +171,16 @@ gcloud services enable run.googleapis.com containerregistry.googleapis.com
 # 3. Configurar Docker para usar o GCR
 gcloud auth configure-docker
 
-# 4. Editar o PROJECT_ID no deploy.sh e executar
+# 4. Exportar a connection string do Postgres
+export DATABASE_URL="postgres://user:pass@host/db?sslmode=require"
+
+# 5. Editar o PROJECT_ID no deploy.sh e executar
 chmod +x deploy.sh
 ./deploy.sh
 ```
 
 ### Testar localmente antes do deploy
 ```bash
-docker-compose up --build
+docker compose up --build
 # Acesse http://localhost
 ```
