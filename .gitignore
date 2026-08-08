@@ -3,3 +3,13 @@ dist/
 .env
 *.db
 .DS_Store
+
+# Logs
+*.log
+
+# Pastas de trabalho / splits de zip
+commit-splits/
+
+# Arquivo auxiliar de instrucoes do zip
+LEIA-ME.md
+
