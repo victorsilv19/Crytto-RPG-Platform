@@ -1,4 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { usersApi } from "./lib/api";
+import { getCurrentUser, logout as authLogout, type SessionUser } from "./lib/auth";
+import { listCharacters, upsertCharacter, type StoredCharacter } from "./lib/characterStore";
+import { saveCurrentScreen, getLastScreen } from "./lib/navigation";
+import { charactersApi } from "./lib/api";
+import { AuthScreen } from "./components/AuthScreen";
+import { Achievements } from "./components/Achievements";
 import { Header } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
 import { StreamCard } from "./components/StreamCard";
@@ -19,7 +26,7 @@ import { CalendarAgenda } from "./components/CalendarAgenda";
 import { ThemeCustomizer } from "./components/ThemeCustomizer";
 import { Button } from "./components/ui/button";
 import { Badge } from "./components/ui/badge";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Avatar, AvatarFallback } from "./components/ui/avatar";
@@ -32,13 +39,15 @@ import { Switch } from "./components/ui/switch";
 import { Label } from "./components/ui/label";
 import { Dice6, Map, CloudRain, Volume2, Sparkles, Settings, Upload, Save, X, Image, Palette, Eye, Layers, Link, Bell, Shield, Zap, Users, Crown, User, Play, Pause, Square, Mic, MicOff, Camera, CameraOff, MonitorSpeaker, Music, Film, AlertCircle, Timer, RotateCcw, FileUser, Headphones, Edit, Calendar, Coins, ShoppingCart } from "lucide-react";
 
-type Screen = "landing" | "dashboard" | "stream" | "profile" | "marketplace" | "profile-edit" | "immersive-intro" | "character-sheet" | "audio-center" | "customizer" | "character-manager" | "replay-player" | "enhanced-marketplace" | "crytts-shop" | "calendar" | "theme-customizer" | "user-type-selection";
+type Screen = "landing" | "dashboard" | "stream" | "profile" | "marketplace" | "profile-edit" | "immersive-intro" | "character-sheet" | "audio-center" | "customizer" | "character-manager" | "replay-player" | "enhanced-marketplace" | "crytts-shop" | "calendar" | "theme-customizer" | "user-type-selection" | "achievements";
 
-export default function App() {
+function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
     // Se não tiver tipo de usuário selecionado, mostra a tela de seleção
     const hasUserType = localStorage.getItem("userTypeSelected");
-    return hasUserType ? "landing" : "user-type-selection";
+    if (!hasUserType) return "user-type-selection";
+    // Restore last visited screen from localStorage, default to dashboard if none
+    return getLastScreen("dashboard");
   });
   const [sidebarActive, setSidebarActive] = useState("home");
   const [cryttsBalance, setCryttsBalance] = useState(() => {
@@ -84,6 +93,101 @@ export default function App() {
   // New component states
   const [isCharacterSheetOpen, setIsCharacterSheetOpen] = useState(false);
   const [showImmersiveIntro, setShowImmersiveIntro] = useState(false);
+  // Personagens do usuário logado (usados pela Ficha de Personagem).
+  const [characters, setCharacters] = useState<StoredCharacter[]>(() => listCharacters(user.id));
+
+  // Identidade do usuário autenticado (usada pelas chamadas de API/personagens).
+  const userIdRef = useRef<string>(user.id);
+  const hydratedRef = useRef(false);
+
+  // Abre a ficha sempre com a lista mais recente do armazenamento local.
+  const openCharacterSheet = () => {
+    setCharacters(listCharacters(userIdRef.current));
+    setIsCharacterSheetOpen(true);
+  };
+
+  const handleLogout = () => {
+    authLogout();
+    onLogout();
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const userId = userIdRef.current;
+    const username = user.username;
+
+    (async () => {
+      try {
+        await usersApi.ensure(userId, username, userType);
+        const user = await usersApi.get(userId);
+        if (cancelled) return;
+
+        setCryttsBalance(user.balance);
+        localStorage.setItem("crytto-balance", String(user.balance));
+
+        const settings = (user.settings || {}) as Record<string, unknown>;
+        setProfileData((prev: any) => {
+          const merged = {
+            ...prev,
+            username: user.username || prev.username,
+            displayName: user.display_name || prev.displayName,
+            bio: user.bio ?? prev.bio,
+            bannerType: user.banner_type || prev.bannerType,
+            bannerColors: Array.isArray(user.banner_colors) ? user.banner_colors : prev.bannerColors,
+            avatarUrl: user.avatar_url ?? prev.avatarUrl,
+            ...settings,
+          };
+          localStorage.setItem("crytto-profile-data", JSON.stringify(merged));
+          return merged;
+        });
+      } catch (err) {
+        console.warn("[crytto] falha ao sincronizar com o backend:", err);
+      } finally {
+        hydratedRef.current = true;
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
+  // Auto-sync do perfil: campos "de coluna" vão como campos nativos, o resto em settings JSONB.
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    const {
+      username, displayName, bio, bannerType, bannerColors, avatarUrl,
+      ...extendedSettings
+    } = profileData;
+    usersApi.update(userIdRef.current, {
+      username,
+      display_name: displayName,
+      bio,
+      user_type: userType,
+      avatar_url: avatarUrl,
+      banner_type: bannerType,
+      banner_colors: bannerColors,
+      settings: extendedSettings,
+    }).catch(err => console.warn("[crytto] falha ao salvar perfil:", err));
+  }, [profileData, userType]);
+
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    usersApi.setBalance(userIdRef.current, cryttsBalance)
+      .catch(err => console.warn("[crytto] falha ao salvar saldo:", err));
+  }, [cryttsBalance]);
+
+  // Persist current screen to localStorage when it changes
+  useEffect(() => {
+    saveCurrentScreen(currentScreen);
+    // Sync sidebar active item with current screen
+    if (currentScreen === "dashboard" || currentScreen === "landing") setSidebarActive("home");
+    else if (currentScreen === "profile" || currentScreen === "profile-edit") setSidebarActive("profile");
+    else if (currentScreen === "enhanced-marketplace") setSidebarActive("marketplace");
+    else if (currentScreen === "stream") setSidebarActive("streaming");
+    else if (currentScreen === "replay-player") setSidebarActive("library");
+    else if (currentScreen === "calendar") setSidebarActive("calendar");
+    else if (currentScreen === "character-manager") setSidebarActive(userType === "master" ? "tables" : "following");
+    else if (currentScreen === "achievements") setSidebarActive("achievements");
+  }, [currentScreen, userType]);
 
   // Mock data
   const streams = [
@@ -136,14 +240,24 @@ export default function App() {
       setCurrentScreen("character-manager");
     }
     if (item === "achievements") {
-      // Implementar conquistas depois
-      console.log("Conquistas em desenvolvimento");
+      setCurrentScreen("achievements");
     }
     if (item === "settings") {
       // Redirecionar para perfil com aba settings
       setCurrentScreen("profile");
     }
   };
+
+  // Cabeçalho reutilizado pelas telas internas (sem o antigo toggle Mestre/Jogador).
+  const renderHeader = () => (
+    <Header
+      showAuth={false}
+      balance={cryttsBalance}
+      userType={userType}
+      onProfileClick={() => setCurrentScreen("profile")}
+      onLogout={handleLogout}
+    />
+  );
 
   const renderLandingPage = () => {
     if (showImmersiveIntro) {
@@ -187,31 +301,23 @@ export default function App() {
             <Sparkles className="h-4 w-4 mr-1" />
             Versão Imersiva
           </Button>
-          
-          {/* Dev: Reset User Type */}
-          {localStorage.getItem("userTypeSelected") && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                localStorage.removeItem("userTypeSelected");
-                setCurrentScreen("user-type-selection");
-                toast.info("🔄 Redefinindo tipo de usuário...");
-              }}
-              className="border-yellow-700/50 text-yellow-300 hover:bg-yellow-900/30"
-            >
-              <RotateCcw className="h-4 w-4 mr-1" />
-              Resetar Tipo
-            </Button>
-          )}
         </div>
         
         {/* Hero Section */}
         <section className="py-20 px-6 relative">
           <div className="max-w-4xl mx-auto text-center">
-            <div className="bg-gray-800 border border-red-900/30 h-64 rounded-lg mb-8 flex items-center justify-center relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-red-900/20 to-transparent"></div>
-              <span className="text-gray-400 relative z-10">Imagem: Mesa de RPG</span>
+            <div className="bg-gradient-to-br from-red-900/30 via-gray-900 to-gray-900 border border-red-700/30 h-64 rounded-lg mb-8 flex items-center justify-center relative overflow-hidden group hover:border-red-600/50 transition-colors">
+              {/* Animated background effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-red-900/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              {/* Icon cluster */}
+              <div className="relative z-10 flex flex-col items-center gap-4">
+                <Dice6 className="h-16 w-16 text-red-600/60 animate-bounce" style={{animationDelay: "0s"}} />
+                <div className="flex gap-6">
+                  <Map className="h-12 w-12 text-red-500/50 rotate-12" />
+                  <Users className="h-12 w-12 text-red-500/50 -rotate-12" />
+                </div>
+                <p className="text-sm text-red-300/70 font-semibold">Mesa de RPG em Ação</p>
+              </div>
             </div>
             <h1 className="mb-6 text-foreground">Onde mundos nascem e histórias ganham vida</h1>
             <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
@@ -228,23 +334,26 @@ export default function App() {
         <div className="max-w-6xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
-              { title: "Streaming", desc: "Transmita suas sessões ao vivo" },
-              { title: "Replay", desc: "Assista sessões gravadas" },
-              { title: "Comunidade", desc: "Conecte-se com outros jogadores" },
-              { title: "Marketplace", desc: "Compre e venda assets de RPG" },
-            ].map((feature, index) => (
-              <Card key={index} className="text-center bg-card border-border hover:border-red-700/50 transition-colors">
-                <CardHeader>
-                  <div className="bg-red-900/30 border border-red-700/50 h-16 w-16 rounded-lg mx-auto mb-4 flex items-center justify-center">
-                    <div className="w-8 h-8 bg-red-600/50 rounded"></div>
-                  </div>
-                  <CardTitle className="text-card-foreground">{feature.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">{feature.desc}</p>
-                </CardContent>
-              </Card>
-            ))}
+              { title: "Streaming", desc: "Transmita suas sessões ao vivo", icon: MonitorSpeaker },
+              { title: "Replay", desc: "Assista sessões gravadas", icon: Film },
+              { title: "Comunidade", desc: "Conecte-se com outros jogadores", icon: Users },
+              { title: "Marketplace", desc: "Compre e venda assets de RPG", icon: ShoppingCart },
+            ].map((feature, index) => {
+              const IconComponent = feature.icon;
+              return (
+                <Card key={index} className="text-center bg-card border-border hover:border-red-700/50 transition-all hover:shadow-lg hover:shadow-red-900/20 group">
+                  <CardHeader>
+                    <div className="bg-gradient-to-br from-red-900/30 to-red-900/10 border border-red-700/30 h-16 w-16 rounded-lg mx-auto mb-4 flex items-center justify-center group-hover:from-red-900/50 group-hover:to-red-900/20 transition-all">
+                      <IconComponent className="h-8 w-8 text-red-500/70 group-hover:text-red-400 transition-colors" />
+                    </div>
+                    <CardTitle className="text-card-foreground">{feature.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{feature.desc}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -266,17 +375,7 @@ export default function App() {
 
   const renderDashboard = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       
 
       <div className="flex">
@@ -312,7 +411,7 @@ export default function App() {
               
               {/* New Features Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <Card className="hover:border-red-700/50 transition-colors cursor-pointer" onClick={() => setIsCharacterSheetOpen(true)}>
+                <Card className="hover:border-red-700/50 transition-colors cursor-pointer" onClick={openCharacterSheet}>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-red-900/30 to-red-700/20 border border-red-500/50 rounded-lg flex items-center justify-center">
@@ -395,17 +494,7 @@ export default function App() {
 
   const renderStreamPage = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="p-6">
         <div className="mb-6">
           <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
@@ -428,16 +517,30 @@ export default function App() {
                     <TabsTrigger value="char3" className="text-xs">Ladino</TabsTrigger>
                   </TabsList>
                   <TabsContent value="char1" className="mt-4">
-                    <div className="bg-gray-800 border border-red-900/30 p-3 rounded text-xs text-gray-300">
-                      <div>HP: 45/50</div>
-                      <div>CA: 18</div>
-                      <div>Força: 16</div>
+                    <div className="bg-gradient-to-br from-red-900/20 to-gray-900 border border-red-700/30 p-3 rounded text-xs text-gray-300 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">HP:</span>
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 bg-gray-700 rounded-full flex-1 w-20">
+                            <div className="h-full bg-red-600 rounded-full" style={{width: "90%"}}></div>
+                          </div>
+                          <span className="text-red-400">45/50</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">CA:</span>
+                        <span className="text-blue-400 font-medium">18</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">STR:</span>
+                        <span className="text-green-400 font-medium">16</span>
+                      </div>
                     </div>
                     <Button 
                       size="sm" 
                       variant="outline" 
                       className="w-full mt-2 border-red-700/50 text-red-300 hover:bg-red-900/30"
-                      onClick={() => setIsCharacterSheetOpen(true)}
+                      onClick={openCharacterSheet}
                     >
                       <FileUser className="h-3 w-3 mr-1" />
                       Ficha Completa
@@ -457,8 +560,11 @@ export default function App() {
                 <CardTitle className="text-sm">Mapa</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="bg-gray-800 border border-red-900/30 h-32 rounded flex items-center justify-center cursor-pointer hover:border-red-700/50 transition-colors">
-                  <Map className="h-8 w-8 text-gray-400" />
+                <div className="bg-gradient-to-br from-green-900/20 via-gray-900 to-gray-900 border border-green-700/30 h-32 rounded flex items-center justify-center cursor-pointer hover:border-green-600/50 transition-colors group">
+                  <div className="text-center z-10">
+                    <Map className="h-10 w-10 text-green-500/60 group-hover:text-green-400 mx-auto mb-2 transition-colors" />
+                    <p className="text-xs text-gray-400">Clique para carregar mapa</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -741,17 +847,7 @@ export default function App() {
 
   const renderProfile = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       
       <div className="px-6 pt-6">
         <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
@@ -1008,35 +1104,40 @@ export default function App() {
           <TabsContent value="marketplace" className="mt-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {[
-                { id: 1, title: "Mapa: Taverna Élfica", price: 45, sales: 23, type: "Mapa" },
-                { id: 2, title: "Aventura: A Torre do Mago", price: 89, sales: 15, type: "Aventura" },
-                { id: 3, title: "Trilha: Batalha Épica", price: 32, sales: 67, type: "Áudio" },
-                { id: 4, title: "Token Set: Criaturas", price: 25, sales: 45, type: "Tokens" }
-              ].map((item) => (
-                <Card key={item.id} className="hover:border-red-700/50 transition-colors">
-                  <CardHeader>
-                    <div className="bg-gray-800 border border-red-900/30 h-32 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-red-900/20 to-transparent"></div>
-                      <span className="text-gray-400 relative z-10 text-sm">{item.type}</span>
-                    </div>
-                    <CardTitle className="text-base">{item.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-primary font-medium">{item.price} Crytts</span>
-                      <span className="text-sm text-muted-foreground">{item.sales} vendas</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" className="flex-1 border-red-700/50 text-red-300 hover:bg-red-900/30">
-                        Editar
-                      </Button>
-                      <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90">
-                        Estatísticas
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                { id: 1, title: "Mapa: Taverna Élfica", price: 45, sales: 23, type: "Mapa", icon: MapPin, color: "from-blue-900/30 to-blue-700/10" },
+                { id: 2, title: "Aventura: A Torre do Mago", price: 89, sales: 15, type: "Aventura", icon: Scroll, color: "from-purple-900/30 to-purple-700/10" },
+                { id: 3, title: "Trilha: Batalha Épica", price: 32, sales: 67, type: "Áudio", icon: Music, color: "from-yellow-900/30 to-yellow-700/10" },
+                { id: 4, title: "Token Set: Criaturas", price: 25, sales: 45, type: "Tokens", icon: Crown, color: "from-orange-900/30 to-orange-700/10" }
+              ].map((item) => {
+                const IconComponent = item.icon;
+                return (
+                  <Card key={item.id} className="hover:border-red-700/50 transition-all hover:shadow-lg hover:shadow-red-900/10 group">
+                    <CardHeader>
+                      <div className={`bg-gradient-to-br ${item.color} via-gray-900 to-gray-900 border border-red-700/20 h-32 rounded-lg mb-4 flex items-center justify-center relative overflow-hidden group-hover:border-red-600/50 transition-colors`}>
+                        <IconComponent className="h-12 w-12 text-red-500/60 group-hover:text-red-400 group-hover:scale-110 transition-all" />
+                      </div>
+                      <CardTitle className="text-base">{item.title}</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-primary font-medium">{item.price} Crytts</span>
+                        <span className="text-sm text-muted-foreground flex items-center gap-1">
+                          <TrendingUp className="h-3 w-3" />
+                          {item.sales}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" className="flex-1 border-red-700/50 text-red-300 hover:bg-red-900/30">
+                          Editar
+                        </Button>
+                        <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90">
+                          Estatísticas
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
             <div className="mt-6">
               <Button variant="outline" className="border-red-700/50 text-red-300 hover:bg-red-900/30">
@@ -1096,27 +1197,30 @@ export default function App() {
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {[
-                      { title: "Mapa: Taverna Mística", category: "Mapa", price: 25 },
-                      { title: "Trilha: Batalha Final", category: "Áudio", price: 15 },
-                      { title: "Aventura: O Cristal Perdido", category: "Aventura", price: 45 }
-                    ].map((item, index) => (
-                      <Card key={index} className="bg-muted/30 border-red-700/30">
-                        <CardHeader className="pb-3">
-                          <div className="bg-gray-800 border border-red-900/30 h-20 rounded-lg mb-2 flex items-center justify-center">
-                            <span className="text-gray-400 text-xs">{item.category}</span>
-                          </div>
-                          <CardTitle className="text-sm">{item.title}</CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-0">
-                          <div className="flex items-center justify-between">
-                            <span className="text-primary font-medium">{item.price} Crytts</span>
-                            <Button variant="outline" size="sm" className="border-red-700/50 text-red-300 hover:bg-red-900/30">
-                              Ver
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                      { title: "Mapa: Taverna Mística", category: "Mapa", price: 25, icon: MapPin },
+                      { title: "Trilha: Batalha Final", category: "Áudio", price: 15, icon: Music },
+                      { title: "Aventura: O Cristal Perdido", category: "Aventura", price: 45, icon: Scroll }
+                    ].map((item, index) => {
+                      const IconComponent = item.icon;
+                      return (
+                        <Card key={index} className="bg-muted/30 border-red-700/30 hover:border-red-600/50 transition-colors group">
+                          <CardHeader className="pb-3">
+                            <div className="bg-gradient-to-br from-red-900/20 to-gray-900 border border-red-700/20 h-20 rounded-lg mb-2 flex items-center justify-center group-hover:border-red-600/50 transition-colors">
+                              <IconComponent className="h-8 w-8 text-red-500/60 group-hover:text-red-400 group-hover:scale-110 transition-all" />
+                            </div>
+                            <CardTitle className="text-sm">{item.title}</CardTitle>
+                          </CardHeader>
+                          <CardContent className="pt-0">
+                            <div className="flex items-center justify-between">
+                              <span className="text-primary font-medium">{item.price} Crytts</span>
+                              <Button variant="outline" size="sm" className="border-red-700/50 text-red-300 hover:bg-red-900/30">
+                                Ver
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -1360,17 +1464,7 @@ export default function App() {
 
   const renderProfileEdit = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       
       {/* Header with preview */}
       <div className="border-b border-border px-6 py-4">
@@ -1742,17 +1836,7 @@ export default function App() {
 
   const renderMarketplace = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="flex">
         <Sidebar activeItem={sidebarActive} onItemClick={handleSidebarClick} userType={userType} />
         
@@ -1820,17 +1904,7 @@ export default function App() {
   // New render functions
   const renderAudioCenter = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="p-6">
         <div className="mb-6">
           <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
@@ -1844,17 +1918,7 @@ export default function App() {
 
   const renderCustomizer = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="p-6">
         <div className="mb-6">
           <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
@@ -1868,41 +1932,21 @@ export default function App() {
 
   const renderCharacterManager = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="p-6">
         <div className="mb-6">
           <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
             ← Voltar ao Dashboard
           </Button>
         </div>
-        <CharacterManager userType={userType} />
+        <CharacterManager userType={userType} userId={userIdRef.current} />
       </div>
     </div>
   );
 
   const renderReplayPlayer = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="p-6">
         <div className="mb-6">
           <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
@@ -1916,27 +1960,19 @@ export default function App() {
 
   const renderEnhancedMarketplace = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="flex">
         <Sidebar activeItem={sidebarActive} onItemClick={handleSidebarClick} userType={userType} />
         <main className="flex-1 p-6">
           <EnhancedMarketplace 
             userType={userType} 
             balance={cryttsBalance}
-            onPurchase={(item) => {
-              const newBalance = cryttsBalance - item.price;
+            userId={userIdRef.current}
+            onBalanceChange={(newBalance) => {
               setCryttsBalance(newBalance);
               localStorage.setItem('crytto-balance', newBalance.toString());
+            }}
+            onPurchase={(item) => {
               toast.success(`🎉 ${item.title} adquirido com sucesso!`);
             }}
           />
@@ -1947,17 +1983,7 @@ export default function App() {
 
   const renderCryttsShop = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="p-6">
         <div className="mb-6">
           <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
@@ -1978,21 +2004,11 @@ export default function App() {
 
   const renderCalendar = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="flex">
         <Sidebar activeItem={sidebarActive} onItemClick={handleSidebarClick} userType={userType} />
         <main className="flex-1 p-6">
-          <CalendarAgenda userType={userType} />
+          <CalendarAgenda userType={userType} userId={userIdRef.current} />
         </main>
       </div>
     </div>
@@ -2000,17 +2016,7 @@ export default function App() {
 
   const renderThemeCustomizer = () => (
     <div className="min-h-screen bg-background">
-      <Header 
-        showAuth={false} 
-        balance={cryttsBalance} 
-        userType={userType} 
-        onUserTypeChange={() => {
-          const newType = userType === "master" ? "player" : "master";
-          setUserType(newType);
-          localStorage.setItem("userTypeSelected", newType);
-        }}
-        onProfileClick={() => setCurrentScreen("profile")}
-      />
+      {renderHeader()}
       <div className="p-6">
         <div className="mb-6">
           <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
@@ -2018,6 +2024,23 @@ export default function App() {
           </Button>
         </div>
         <ThemeCustomizer />
+      </div>
+    </div>
+  );
+
+  const renderAchievements = () => (
+    <div className="min-h-screen bg-background">
+      {renderHeader()}
+      <div className="flex">
+        <Sidebar activeItem={sidebarActive} onItemClick={handleSidebarClick} userType={userType} />
+        <main className="flex-1 p-6">
+          <div className="mb-6">
+            <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
+              ← Voltar ao Dashboard
+            </Button>
+          </div>
+          <Achievements userId={userIdRef.current} />
+        </main>
       </div>
     </div>
   );
@@ -2065,6 +2088,8 @@ export default function App() {
             return renderCalendar();
           case "theme-customizer":
             return renderThemeCustomizer();
+          case "achievements":
+            return renderAchievements();
           default:
             return renderLandingPage();
         }
@@ -2074,13 +2099,42 @@ export default function App() {
       <CharacterSheet 
         isOpen={isCharacterSheetOpen} 
         onClose={() => setIsCharacterSheetOpen(false)}
-        onSave={(character) => {
-          console.log("Character saved:", character);
-          setIsCharacterSheetOpen(false);
+        characters={characters}
+        onSaveCharacter={(character) => {
+          // Persiste a edição feita na ficha e sincroniza a lista em memória.
+          setCharacters(upsertCharacter(userIdRef.current, character));
+          charactersApi.update(character.id, {
+            name: character.name,
+            class: character.class,
+            race: character.race,
+            background: character.background,
+            hp: character.hp,
+            ac: character.ac,
+            stats: character.stats,
+            skills: character.skills,
+            backstory: character.backstory,
+          }).catch(() => { /* backend indisponível */ });
         }}
       />
       
       <Toaster />
     </>
   );
+}
+
+// Wrapper de autenticação: enquanto não houver sessão válida, sempre mostra o login.
+// A sessão é lida do localStorage, então o F5 mantém o usuário logado.
+export default function App() {
+  const [authUser, setAuthUser] = useState<SessionUser | null>(() => getCurrentUser());
+
+  if (!authUser) {
+    return (
+      <>
+        <AuthScreen onAuthenticated={setAuthUser} />
+        <Toaster />
+      </>
+    );
+  }
+
+  return <CryttoApp user={authUser} onLogout={() => setAuthUser(null)} />;
 }
