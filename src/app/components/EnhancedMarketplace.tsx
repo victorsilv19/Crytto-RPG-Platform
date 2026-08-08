@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { marketplaceApi, type ApiMarketplaceItem } from "../lib/api";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -9,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "./ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Separator } from "./ui/separator";
-import { toast } from "sonner@2.0.3";
+import { toast } from "sonner";
 import { 
   ShoppingCart, 
   Plus, 
@@ -29,7 +30,8 @@ import {
   Palette,
   DollarSign,
   TrendingUp,
-  Award
+  Award,
+  Image
 } from "lucide-react";
 
 interface MarketplaceItem {
@@ -53,76 +55,51 @@ interface MarketplaceItem {
 interface EnhancedMarketplaceProps {
   userType: "master" | "player";
   balance: number;
+  userId: string;
+  onBalanceChange?: (newBalance: number) => void;
   onPurchase?: (item: MarketplaceItem) => void;
 }
 
-export function EnhancedMarketplace({ userType, balance, onPurchase }: EnhancedMarketplaceProps) {
-  const [items, setItems] = useState<MarketplaceItem[]>([
-    {
-      id: "1",
-      title: "Mapa: Castelo Sombrio",
-      description: "Um castelo gótico abandonado perfeito para aventuras de horror. Inclui múltiplos andares, masmorras secretas e salas temáticas.",
-      price: 50,
-      category: "Mapas",
-      rating: 4.8,
-      reviews: 124,
-      downloads: 567,
-      author: "MestreEpico",
-      authorId: "master1",
-      images: [],
-      tags: ["gótico", "castelo", "horror", "medieval"],
-      createdAt: new Date("2024-01-10"),
-      isOwned: false,
-      isFavorite: false
-    },
-    {
-      id: "2",
-      title: "Aventura: O Tesouro Perdido",
-      description: "Uma aventura completa para 4-6 jogadores de nível 3-5. Inclui NPCs, mapas, e plot hooks únicos para 8-12 horas de jogo.",
-      price: 120,
-      category: "Aventuras",
-      rating: 4.9,
-      reviews: 89,
-      downloads: 234,
-      author: "DragonMaster",
-      authorId: "master2",
-      images: [],
-      tags: ["aventura", "tesouro", "exploração", "level 3-5"],
-      createdAt: new Date("2024-01-08"),
-      isOwned: true
-    },
-    {
-      id: "3",
-      title: "Trilha Sonora: Floresta Mística",
-      description: "Uma coletânea de 12 faixas ambientais para florestas encantadas. Inclui loops perfeitos e versões com e sem efeitos sonoros.",
-      price: 30,
-      category: "Trilha Sonora",
-      rating: 4.7,
-      reviews: 67,
-      downloads: 890,
-      author: "SoundMaster",
-      authorId: "master3",
-      images: [],
-      tags: ["floresta", "ambiente", "mystical", "loops"],
-      createdAt: new Date("2024-01-05"),
-      isFavorite: true
-    },
-    {
-      id: "4",
-      title: "Token Set: Criaturas Místicas",
-      description: "50+ tokens de alta qualidade de criaturas místicas e fadas. Formato PNG com fundo transparente.",
-      price: 25,
-      category: "Tokens",
-      rating: 4.6,
-      reviews: 156,
-      downloads: 1023,
-      author: "ArtisticGuru",
-      authorId: "master4",
-      images: [],
-      tags: ["tokens", "criaturas", "fadas", "míticos"],
-      createdAt: new Date("2024-01-03")
-    }
-  ]);
+function fromApi(i: ApiMarketplaceItem, ownedIds: Set<string>): MarketplaceItem {
+  return {
+    id: i.id,
+    title: i.title,
+    description: i.description || "",
+    price: i.price,
+    category: i.category as MarketplaceItem["category"],
+    rating: i.rating,
+    reviews: i.reviews,
+    downloads: i.downloads,
+    author: i.author,
+    authorId: i.author_id,
+    images: i.images || [],
+    tags: i.tags || [],
+    createdAt: new Date(i.created_at),
+    isOwned: ownedIds.has(i.id),
+  };
+}
+
+export function EnhancedMarketplace({ userType, balance, userId, onBalanceChange, onPurchase }: EnhancedMarketplaceProps) {
+  const [items, setItems] = useState<MarketplaceItem[]>([]);
+  const [ownedIds, setOwnedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        const [rawItems, owned] = await Promise.all([
+          marketplaceApi.list(),
+          marketplaceApi.purchases(userId),
+        ]);
+        const ownedSet = new Set(owned);
+        setOwnedIds(ownedSet);
+        setItems(rawItems.map(i => fromApi(i, ownedSet)));
+      } catch (err) {
+        console.warn("[crytto] falha ao carregar marketplace:", err);
+        toast.error("Não foi possível carregar o marketplace.");
+      }
+    })();
+  }, [userId]);
 
   const [cart, setCart] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -187,78 +164,95 @@ export function EnhancedMarketplace({ userType, balance, onPurchase }: EnhancedM
     }
   };
 
-  const purchaseItem = (item: MarketplaceItem) => {
+  const purchaseItem = async (item: MarketplaceItem) => {
+    if (item.isOwned) {
+      toast.info("Você já possui este item.");
+      return;
+    }
     if (balance < item.price) {
       toast.error("💰 Crytts insuficientes para esta compra!");
       return;
     }
-    
-    setItems(prev => prev.map(i => 
-      i.id === item.id 
-        ? { ...i, isOwned: true }
-        : i
-    ));
-    
-    removeFromCart(item.id);
-    toast.success(`✅ ${item.title} comprado com sucesso! (-${item.price} Crytts)`);
-    onPurchase?.(item);
+    try {
+      const res = await marketplaceApi.purchase(item.id, userId);
+      const newOwned = new Set(ownedIds); newOwned.add(item.id);
+      setOwnedIds(newOwned);
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, isOwned: true } : i));
+      removeFromCart(item.id);
+      onBalanceChange?.(res.new_balance);
+      onPurchase?.(item);
+      toast.success(`✅ ${item.title} comprado com sucesso! (-${item.price} Crytts)`);
+    } catch (err: any) {
+      toast.error(err?.message || "Falha na compra.");
+    }
   };
 
-  const purchaseCart = () => {
-    const cartItems = items.filter(item => cart.includes(item.id));
+  const purchaseCart = async () => {
+    const cartItems = items.filter(item => cart.includes(item.id) && !item.isOwned);
     const totalPrice = cartItems.reduce((sum, item) => sum + item.price, 0);
-    
     if (balance < totalPrice) {
       toast.error("💰 Crytts insuficientes para finalizar a compra!");
       return;
     }
-    
-    cartItems.forEach(item => purchaseItem(item));
+    for (const item of cartItems) {
+      await purchaseItem(item);
+    }
     setCart([]);
     toast.success(`🎉 Compra finalizada! Total: ${totalPrice} Crytts`);
   };
 
-  const createItem = () => {
-    const newItem: MarketplaceItem = {
-      id: Date.now().toString(),
-      title: formData.title || "Novo Item",
-      description: formData.description || "",
-      price: formData.price || 10,
-      category: formData.category || "Outros",
-      rating: 0,
-      reviews: 0,
-      downloads: 0,
-      author: userType === "master" ? "Você" : "Usuário",
-      authorId: "current-user",
-      images: formData.images || [],
-      tags: formData.tags || [],
-      createdAt: new Date()
-    };
-
-    setItems(prev => [newItem, ...prev]);
-    setFormData({});
-    setIsCreateDialogOpen(false);
-    toast.success(`✨ ${newItem.title} criado com sucesso!`);
+  const createItem = async () => {
+    try {
+      const created = await marketplaceApi.create({
+        title: formData.title || "Novo Item",
+        description: formData.description || "",
+        price: formData.price || 10,
+        category: formData.category || "Outros",
+        author: userType === "master" ? "Você" : "Usuário",
+        author_id: userId,
+        images: formData.images || [],
+        tags: formData.tags || [],
+      });
+      const newItem = fromApi(created, ownedIds);
+      setItems(prev => [newItem, ...prev]);
+      setFormData({});
+      setIsCreateDialogOpen(false);
+      toast.success(`✨ ${newItem.title} criado com sucesso!`);
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao criar item.");
+    }
   };
 
-  const updateItem = () => {
+  const updateItem = async () => {
     if (!selectedItem) return;
-
-    setItems(prev => prev.map(item => 
-      item.id === selectedItem.id 
-        ? { ...item, ...formData }
-        : item
-    ));
-    
-    setFormData({});
-    setIsEditDialogOpen(false);
-    setSelectedItem(null);
-    toast.success("✅ Item atualizado com sucesso!");
+    try {
+      const updated = await marketplaceApi.update(selectedItem.id, {
+        title: formData.title,
+        description: formData.description,
+        price: formData.price,
+        category: formData.category as any,
+        tags: formData.tags,
+        images: formData.images,
+      });
+      const merged = fromApi(updated, ownedIds);
+      setItems(prev => prev.map(i => i.id === merged.id ? { ...merged, isFavorite: i.isFavorite } : i));
+      setFormData({});
+      setIsEditDialogOpen(false);
+      setSelectedItem(null);
+      toast.success("✅ Item atualizado com sucesso!");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao atualizar item.");
+    }
   };
 
-  const deleteItem = (itemId: string) => {
-    setItems(prev => prev.filter(item => item.id !== itemId));
-    toast.success("🗑️ Item removido do marketplace!");
+  const deleteItem = async (itemId: string) => {
+    try {
+      await marketplaceApi.remove(itemId);
+      setItems(prev => prev.filter(item => item.id !== itemId));
+      toast.success("🗑️ Item removido do marketplace!");
+    } catch (err: any) {
+      toast.error(err?.message || "Falha ao remover item.");
+    }
   };
 
   const getCategoryIcon = (category: string) => {
@@ -360,8 +354,11 @@ export function EnhancedMarketplace({ userType, balance, onPurchase }: EnhancedM
           
           <div className="bg-muted/30 rounded-lg p-4">
             <h4 className="font-medium mb-2">Preview</h4>
-            <div className="bg-gray-800 border border-red-900/30 h-32 rounded-lg flex items-center justify-center">
-              <span className="text-gray-400">Preview da imagem</span>
+            <div className="bg-gradient-to-br from-red-900/20 via-gray-900 to-gray-900 border border-red-700/30 h-32 rounded-lg flex items-center justify-center overflow-hidden group hover:border-red-600/50 transition-colors">
+              <div className="text-center z-10">
+                <Image className="h-8 w-8 text-red-500/60 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">Preview da imagem</p>
+              </div>
             </div>
           </div>
         </TabsContent>
