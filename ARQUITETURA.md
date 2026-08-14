@@ -2,7 +2,7 @@
 
 ## 1. Visão Geral
 
-A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de sessões de RPG. A solução é composta por um frontend React (SPA) e um backend Node.js/Express com banco de dados SQLite, ambos containerizados e implantados no Google Cloud Run.
+A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de sessões de RPG. A solução é composta por um frontend React (SPA) e um backend Node.js/Express com banco de dados Postgres, ambos containerizados e implantados no Google Cloud Run. O processo de integração e implantação é automatizado por uma pipeline de CI/CD utilizando GitHub Actions.
 
 ---
 
@@ -30,13 +30,18 @@ A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de s
 │  └──────────────────────────────────────┼───────────────┘   │
 │                                         │                   │
 │  ┌──────────────────────────────────────▼───────────────┐   │
-│  │              Volume Persistente                       │   │
-│  │              SQLite (crytto.db)                       │   │
+│  │          Postgres Gerenciado (Neon/Supabase)          │   │
+│  │          Persistência externa ao Cloud Run            │   │
 │  └───────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌───────────────────────────────────────────────────────┐   │
 │  │         Google Container Registry (GCR)               │   │
 │  │         Armazena as imagens Docker                    │   │
+│  └───────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌───────────────────────────────────────────────────────┐   │
+│  │            GitHub Actions (CI/CD)                     │   │
+│  │  Build → Testes → Lint → Deploy automático           │   │
 │  └───────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -69,7 +74,7 @@ A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de s
 | **Google Cloud Run** | Hospedagem dos containers | Serverless, escala automática, HTTPS gerenciado, plano gratuito generoso. |
 | **Google Container Registry (GCR)** | Armazenamento das imagens Docker | Integrado nativamente ao Cloud Run. |
 | **Neon / Supabase (Postgres)** | Banco de dados gerenciado | Free tier, backups automáticos, persistência independente do Cloud Run. |
-| **Cloud Build** (futuro CI/CD) | Pipeline de build automático | Integração com GitHub para deploy automático. |
+| **GitHub Actions (CI/CD)** | Pipeline de build, testes e deploy | Integração nativa com GitHub, sem custo para repositórios públicos, permite automação completa. |
 
 ---
 
@@ -141,17 +146,43 @@ A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de s
 
 ---
 
-## 10. Melhorias Futuras
+## 10. CI/CD (Integração Contínua e Deploy Contínuo)
 
-- Implementar autenticação com **Firebase Auth** ou **Google Identity Platform**.
-- Adicionar **Cloud Storage** para upload de imagens e assets.
-- Implementar **CI/CD com Cloud Build** integrado ao GitHub.
-- Adicionar **Cloud CDN** para melhor performance global.
-- Migrar `DATABASE_URL` para o **Secret Manager** do GCP.
+A pipeline de CI/CD é implementada com **GitHub Actions** (veja `.github/workflows/ci-cd.yml`):
+
+### Etapas da Pipeline
+1. **Checkout do código** — obtém o código do repositório
+2. **Instalação de dependências** — `npm ci` no frontend e backend
+3. **Lint (qualidade)** — ESLint valida o código
+4. **Testes automatizados** — Jest (backend) e Vitest (frontend)
+5. **Build de produção** — Vite + Docker build
+6. **CodeQL** — análise estática de segurança
+7. **Deploy automático** — Google Cloud Run (apenas na branch `main`)
+8. **Validação do deploy** — health check e HTTP 200
+
+### Gatilhos
+- `push` em `main` → build + testes + deploy
+- `push` em `develop` → build + testes (sem deploy)
+- `pull_request` → validação pré-merge
+
+### Documentação completa
+Veja [docs/PIPELINE-CICD.md](./docs/PIPELINE-CICD.md)
 
 ---
 
-## 11. Como Fazer o Deploy
+## 11. Melhorias Futuras
+
+- Implementar autenticação com **Firebase Auth** ou **Google Identity Platform**.
+- Adicionar **Cloud Storage** para upload de imagens e assets.
+- Implementar **deploy canário (canary deployment)** no Cloud Run.
+- Migrar para **Artifact Registry** (substituição do GCR).
+- Migrar `DATABASE_URL` para o **Secret Manager** do GCP.
+- Adicionar **Cloud CDN** para melhor performance global.
+- Configurar **notificações de falhas** da pipeline (Slack/Discord).
+
+---
+
+## 12. Como Fazer o Deploy
 
 ### Pré-requisitos
 1. Instalar [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
@@ -159,7 +190,11 @@ A Crytto RPG Platform é uma aplicação web para streaming e gerenciamento de s
 3. Criar um projeto no [Google Cloud Console](https://console.cloud.google.com)
 4. Provisionar um Postgres gerenciado gratuito (**Neon** ou **Supabase**) e copiar a `DATABASE_URL`.
 
-### Passos
+### Deploy Automatizado (CI/CD)
+O deploy é feito automaticamente pelo **GitHub Actions** ao fazer push na branch `main`.
+Os secrets `GCP_SA_KEY` e `DATABASE_URL` devem estar configurados no repositório.
+
+### Deploy Manual (Fallback)
 ```bash
 # 1. Autenticar no Google Cloud
 gcloud auth login

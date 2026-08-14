@@ -1,0 +1,220 @@
+name: CI/CD Pipeline
+
+# Gatilhos (triggers)
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch: # Permite execução manual
+
+env:
+  PROJECT_ID: crytto-rpg-2026
+  REGION: us-central1
+  BACKEND_IMAGE: gcr.io/crytto-rpg-2026/crytto-backend
+  FRONTEND_IMAGE: gcr.io/crytto-rpg-2026/crytto-frontend
+
+jobs:
+  # ============================================================
+  # 1. BUILD E VALIDAÇÃO DO BACKEND
+  # ============================================================
+  backend-build:
+    name: Backend - Build, Testes e Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package.json
+
+      - name: Instalar dependências do backend
+        working-directory: backend
+        run: npm install --no-audit --no-fund
+
+      - name: Executar lint do backend
+        working-directory: backend
+        run: npm run lint
+
+      - name: Executar testes do backend
+        working-directory: backend
+        run: npm test
+
+      - name: Build da imagem Docker do backend
+        run: docker build -t $BACKEND_IMAGE ./backend
+
+  # ============================================================
+  # 2. BUILD E VALIDAÇÃO DO FRONTEND
+  # ============================================================
+  frontend-build:
+    name: Frontend - Build, Testes e Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências do frontend
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+
+      - name: Executar lint do frontend
+        run: npm run lint
+
+      - name: Executar testes do frontend
+        run: npm test
+
+      - name: Build de produção do frontend
+        run: npm run build
+
+      - name: Build da imagem Docker do frontend
+        run: docker build -t $FRONTEND_IMAGE .
+
+  # ============================================================
+  # 3. ANÁLISE DE QUALIDADE DE CÓDIGO (CodeQL)
+  # ============================================================
+  code-quality:
+    name: Análise estática de segurança (CodeQL)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript-typescript']
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Inicializar CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Análise CodeQL
+        uses: github/codeql-action/analyze@v3
+
+  # ============================================================
+  # 4. DEPLOY AUTOMATIZADO NO GOOGLE CLOUD RUN
+  # (Executado apenas em push para main)
+  # ============================================================
+  deploy:
+    name: Deploy Automatizado no Google Cloud Run
+    needs: [backend-build, frontend-build, code-quality]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Autenticar no Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configurar gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configurar Docker para GCR
+        run: gcloud auth configure-docker --quiet
+
+      # ----- Deploy do Backend -----
+      - name: Build e push da imagem do Backend
+        run: |
+          docker build -t $BACKEND_IMAGE:${{ github.sha }} ./backend
+          docker tag $BACKEND_IMAGE:${{ github.sha }} $BACKEND_IMAGE:latest
+          docker push $BACKEND_IMAGE:${{ github.sha }}
+          docker push $BACKEND_IMAGE:latest
+
+      - name: Deploy do Backend no Cloud Run
+        run: |
+          gcloud run deploy crytto-backend \
+            --image $BACKEND_IMAGE:${{ github.sha }} \
+            --platform managed \
+            --region $REGION \
+            --allow-unauthenticated \
+            --port 3001 \
+            --memory 512Mi \
+            --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+            --project $PROJECT_ID
+
+      - name: Obter URL do Backend
+        id: backend-url
+        run: |
+          BACKEND_URL=$(gcloud run services describe crytto-backend \
+            --platform managed \
+            --region $REGION \
+            --format 'value(status.url)' \
+            --project $PROJECT_ID)
+          echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
+
+      # ----- Deploy do Frontend -----
+      - name: Build e push da imagem do Frontend
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=${{ steps.backend-url.outputs.url }} \
+            -t $FRONTEND_IMAGE:${{ github.sha }} .
+          docker tag $FRONTEND_IMAGE:${{ github.sha }} $FRONTEND_IMAGE:latest
+          docker push $FRONTEND_IMAGE:${{ github.sha }}
+          docker push $FRONTEND_IMAGE:latest
+
+      - name: Deploy do Frontend no Cloud Run
+        run: |
+          gcloud run deploy crytto-frontend \
+            --image $FRONTEND_IMAGE:${{ github.sha }} \
+            --platform managed \
+            --region $REGION \
+            --allow-unauthenticated \
+            --port 80 \
+            --memory 256Mi \
+            --project $PROJECT_ID
+
+      - name: Obter URL do Frontend
+        id: frontend-url
+        run: |
+          FRONTEND_URL=$(gcloud run services describe crytto-frontend \
+            --platform managed \
+            --region $REGION \
+            --format 'value(status.url)' \
+            --project $PROJECT_ID)
+          echo "url=$FRONTEND_URL" >> $GITHUB_OUTPUT
+
+      # ----- Atualizar CORS do Backend -----
+      - name: Restringir CORS do Backend para a URL do Frontend
+        run: |
+          gcloud run services update crytto-backend \
+            --region $REGION \
+            --update-env-vars "FRONTEND_URL=${{ steps.frontend-url.outputs.url }}" \
+            --project $PROJECT_ID
+
+      # ----- Validação do Deploy -----
+      - name: Validar health check do Backend
+        run: |
+          sleep 15
+          curl -f -sS "${{ steps.backend-url.outputs.url }}/health" || exit 1
+
+      - name: Validar Frontend (HTTP 200)
+        run: |
+          sleep 15
+          curl -f -sS -o /dev/null -w "Frontend HTTP %{http_code}\n" "${{ steps.frontend-url.outputs.url }}" || exit 1
+
+      - name: Exibir URLs de produção
+        run: |
+          echo "=========================================="
+          echo "✅ DEPLOY CONCLUÍDO COM SUCESSO!"
+          echo "🌐 Frontend: ${{ steps.frontend-url.outputs.url }}"
+          echo "🔧 Backend:  ${{ steps.backend-url.outputs.url }}"
+          echo "=========================================="
