@@ -17,11 +17,11 @@
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "types": [],
+    "types": ["node", "vitest/globals"],
     "paths": {
       "@/*": ["./src/app/*"]
     }
   },
-  "include": ["src", "src/types/shims.d.ts"],
-  "exclude": ["node_modules", "dist", "backend", "vite.config.ts"]
+  "include": ["src", "src/types/shims.d.ts", "vite.config.ts"],
+  "exclude": ["node_modules", "dist", "backend"]
 }

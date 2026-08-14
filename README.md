@@ -1,16 +1,40 @@
+# Crytto RPG Platform
 
-  # Crytto RPG Platform
-
-  Aplicação Web para streaming e gerenciamento de sessões de RPG. Frontend React (Vite + Tailwind) e backend Node.js/Express com Postgres, ambos containerizados e implantados no Google Cloud Run.
+  Aplicação Web para streaming e gerenciamento de sessões de RPG. Frontend React (Vite + Tailwind) e backend Node.js/Express com Postgres, ambos containerizados e implantados no Google Cloud Run com pipeline CI/CD automatizada.
 
   ## Arquitetura resumida
 
   - **Frontend:** React 18 + TypeScript + Vite servido por nginx no Cloud Run.
   - **Backend:** Node.js/Express expondo API REST em `/api/*`.
   - **Banco:** Postgres gerenciado (Neon ou Supabase) — persistência real e independente do ciclo de vida dos containers.
-  - **Deploy:** dois serviços no Cloud Run + Container Registry. Script único (`deploy.sh`).
+  - **Deploy:** pipeline CI/CD com GitHub Actions → build, testes, lint, CodeQL e deploy automático no Cloud Run.
 
   Detalhes técnicos completos: [ARQUITETURA.md](./ARQUITETURA.md).
+
+  ## CI/CD (Pipeline)
+
+  A pipeline é automatizada com GitHub Actions. Ao fazer push na branch `main`, o fluxo executa:
+
+  1. Checkout do código
+  2. Instalação de dependências
+  3. Lint (qualidade de código)
+  4. Testes automatizados (Jest + Vitest)
+  5. Build de produção (Vite + Docker)
+  6. Análise estática de segurança (CodeQL)
+  7. Deploy automático no Google Cloud Run
+  8. Validação do deploy (health check)
+
+  Documentação completa da pipeline: [docs/PIPELINE-CICD.md](./docs/PIPELINE-CICD.md)
+
+  ## Testes
+
+  ```bash
+  # Testes do backend (Jest + Supertest)
+  cd backend && npm install && npm test
+
+  # Testes do frontend (Vitest)
+  npm install && npm test
+  ```
 
   ## Desenvolvimento local
 
@@ -31,12 +55,17 @@
 
   ## Deploy no Google Cloud Run
 
-  ### Pré-requisitos
+  ### Deploy Automatizado (CI/CD)
+  O deploy é realizado automaticamente pelo **GitHub Actions** ao fazer push na branch `main`.
+  Os secrets `GCP_SA_KEY` e `DATABASE_URL` devem estar configurados no repositório GitHub.
+
+  ### Deploy Manual (Fallback)
+  #### Pré-requisitos
   1. Instalar [Google Cloud CLI](https://cloud.google.com/sdk/docs/install) e [Docker Desktop](https://www.docker.com/products/docker-desktop/).
   2. Criar um projeto no Google Cloud Console e habilitar as APIs Cloud Run e Container Registry.
   3. Provisionar um Postgres gerenciado gratuito (recomendado [Neon](https://neon.tech) ou [Supabase](https://supabase.com)) e copiar a connection string.
 
-  ### Passos
+  #### Passos
   ```bash
   # 1. Autenticar
   gcloud auth login
@@ -67,3 +96,10 @@
   | `DATABASE_URL` | Backend | Connection string do Postgres. |
   | `PGSSL` | Backend | `false` desativa TLS (útil para Postgres local). |
   | `FRONTEND_URL` | Backend | Origem permitida no CORS em produção. |
+
+  ## Documentação da entrega
+
+  - [ARQUITETURA.md](./ARQUITETURA.md) — Documento técnico de arquitetura
+  - [docs/PIPELINE-CICD.md](./docs/PIPELINE-CICD.md) — Documentação da Pipeline CI/CD
+  - [docs/SPRINT-REVIEW.md](./docs/SPRINT-REVIEW.md) — Relatório da Sprint Review
+  - [docs/PO-SM-ATUACAO.md](./docs/PO-SM-ATUACAO.md) — Atuação do PO e Scrum Master
