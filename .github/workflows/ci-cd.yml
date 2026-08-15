@@ -11,8 +11,9 @@ on:
 env:
   PROJECT_ID: crytto-rpg-2026
   REGION: us-central1
-  BACKEND_IMAGE: gcr.io/crytto-rpg-2026/crytto-backend
-  FRONTEND_IMAGE: gcr.io/crytto-rpg-2026/crytto-frontend
+  AR_REPO: crytto
+  BACKEND_IMAGE: us-central1-docker.pkg.dev/crytto-rpg-2026/crytto/backend
+  FRONTEND_IMAGE: us-central1-docker.pkg.dev/crytto-rpg-2026/crytto/frontend
 
 jobs:
   # ============================================================
@@ -107,31 +108,39 @@ jobs:
 
   # ============================================================
   # 4. DEPLOY AUTOMATIZADO NO GOOGLE CLOUD RUN
-  # Requer os secrets GCP_SA_KEY e DATABASE_URL configurados.
-  # Executado apenas via acionamento manual (workflow_dispatch)
-  # para evitar falha por falta de credenciais em pushes normais.
+  # Autenticacao via Workload Identity Federation (sem chave JSON).
+  # Executa automaticamente em push para main e tambem via disparo manual.
+  # Secrets necessarios:
+  #   - GCP_WORKLOAD_IDENTITY_PROVIDER
+  #   - GCP_SERVICE_ACCOUNT
+  #   - DATABASE_URL
   # ============================================================
   deploy:
     name: Deploy Automatizado no Google Cloud Run
     needs: [backend-build, frontend-build, code-quality]
-    if: github.event_name == 'workflow_dispatch'
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      - name: Autenticar no Google Cloud
+      - name: Autenticar no Google Cloud (WIF)
+        id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
       - name: Configurar gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
 
-      - name: Configurar Docker para GCR
-        run: gcloud auth configure-docker --quiet
+      - name: Configurar Docker para Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
       # ----- Deploy do Backend -----
       - name: Build e push da imagem do Backend
