@@ -128,7 +128,11 @@ describe("API Crytto RPG Platform", () => {
   describe("POST /api/marketplace/:id/purchase", () => {
     it("deve retornar 404 quando o item não existe", async () => {
       const client = {
-        query: jest.fn().mockResolvedValueOnce({ rows: [] }),
+        query: jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [] }) // SELECT item
+          .mockResolvedValueOnce({ rows: [] }), // ROLLBACK
         release: jest.fn(),
       };
       mockConnect.mockResolvedValue(client);
@@ -145,8 +149,10 @@ describe("API Crytto RPG Platform", () => {
       const client = {
         query: jest
           .fn()
-          .mockResolvedValueOnce({ rows: [{ id: "item-1", price: 500 }] })
-          .mockResolvedValueOnce({ rows: [{ balance: 100 }] }),
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ id: "item-1", price: 500 }] }) // SELECT item
+          .mockResolvedValueOnce({ rows: [{ balance: 100 }] }) // SELECT balance
+          .mockResolvedValueOnce({ rows: [] }), // ROLLBACK
         release: jest.fn(),
       };
       mockConnect.mockResolvedValue(client);
@@ -163,11 +169,13 @@ describe("API Crytto RPG Platform", () => {
       const client = {
         query: jest
           .fn()
-          .mockResolvedValueOnce({ rows: [{ id: "item-1", price: 50 }] })
-          .mockResolvedValueOnce({ rows: [{ balance: 1250 }] })
-          .mockResolvedValueOnce({ rows: [] })
-          .mockResolvedValueOnce({ rows: [] })
-          .mockResolvedValueOnce({ rows: [] }),
+          .mockResolvedValueOnce({ rows: [] }) // BEGIN
+          .mockResolvedValueOnce({ rows: [{ id: "item-1", price: 50 }] }) // SELECT item
+          .mockResolvedValueOnce({ rows: [{ balance: 1250 }] }) // SELECT balance
+          .mockResolvedValueOnce({ rows: [] }) // UPDATE users
+          .mockResolvedValueOnce({ rows: [] }) // UPDATE marketplace
+          .mockResolvedValueOnce({ rows: [] }) // INSERT purchases
+          .mockResolvedValueOnce({ rows: [] }), // COMMIT
         release: jest.fn(),
       };
       mockConnect.mockResolvedValue(client);
