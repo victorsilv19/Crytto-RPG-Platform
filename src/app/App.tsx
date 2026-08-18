@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { usersApi } from "./lib/api";
-import { getCurrentUser, logout as authLogout, type SessionUser } from "./lib/auth";
+import { getCurrentUser, logout as authLogout, updateCurrentUserId, type SessionUser } from "./lib/auth";
 import { listCharacters, upsertCharacter, type StoredCharacter } from "./lib/characterStore";
 import { saveCurrentScreen, getLastScreen } from "./lib/navigation";
 import { charactersApi } from "./lib/api";
@@ -118,8 +118,11 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
 
     (async () => {
       try {
-        await usersApi.ensure(userId, username, userType);
-        const user = await usersApi.get(userId);
+        const user = await usersApi.ensure(userId, username, userType);
+        if (user.id !== userId) {
+          userIdRef.current = user.id;
+          updateCurrentUserId(user.id);
+        }
         if (cancelled) return;
 
         setCryttsBalance(user.balance);

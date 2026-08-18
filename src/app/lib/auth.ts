@@ -70,6 +70,15 @@ export function getCurrentUser(): SessionUser | null {
   }
 }
 
+export function updateCurrentUserId(id: string): SessionUser | null {
+  const current = getCurrentUser();
+  if (!current) return null;
+  const updated = { ...current, id };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(updated));
+  localStorage.setItem(USER_ID_KEY, id);
+  return updated;
+}
+
 export function isAuthenticated(): boolean {
   return getCurrentUser() !== null;
 }
