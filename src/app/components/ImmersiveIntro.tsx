@@ -385,7 +385,7 @@ export function ImmersiveIntro({ onGetStarted, onWatchDemo }: ImmersiveIntroProp
                 className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-red-900/30"
               >
                 <Sparkles className="h-5 w-5 mr-2" />
-                Entrar no Crytto
+                Bem-vindo ao Cryttos
                 <ArrowRight className="h-5 w-5 ml-2" />
               </Button>
             </motion.div>
