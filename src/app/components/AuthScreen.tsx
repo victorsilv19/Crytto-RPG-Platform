@@ -63,7 +63,7 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
             <Swords className="h-8 w-8 text-red-400" />
           </div>
           <CardTitle className="text-2xl">
-            {mode === "login" ? "Entrar no CRYTTO" : "Criar Conta"}
+            {mode === "login" ? "Entrar naooo CRYTTO" : "Criar Conta"}
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             {mode === "login"
