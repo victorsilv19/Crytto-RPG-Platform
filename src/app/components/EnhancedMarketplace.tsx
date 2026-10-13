@@ -271,7 +271,8 @@ export function EnhancedMarketplace({ userType, balance, userId, onBalanceChange
     return categoryData?.icon;
   };
 
-  const ItemForm = ({ isEdit = false }) => (
+  // Render helper (não é um componente): evita remontar os inputs a cada tecla.
+  const renderItemForm = (isEdit = false) => (
     <div className="space-y-4">
       <Tabs defaultValue="basic" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
@@ -452,7 +453,7 @@ export function EnhancedMarketplace({ userType, balance, userId, onBalanceChange
                         Crie um novo item para vender no marketplace
                       </DialogDescription>
                     </DialogHeader>
-                    <ItemForm />
+                    {renderItemForm(false)}
                   </DialogContent>
                 </Dialog>
               )}
@@ -629,7 +630,7 @@ export function EnhancedMarketplace({ userType, balance, userId, onBalanceChange
                                 Modifique as informações do seu item
                               </DialogDescription>
                             </DialogHeader>
-                            <ItemForm isEdit />
+                            {renderItemForm(true)}
                           </DialogContent>
                         </Dialog>
                         

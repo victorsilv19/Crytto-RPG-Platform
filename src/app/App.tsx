@@ -1509,7 +1509,12 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
       {/* Header with preview */}
       <div className="border-b border-border px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <h1 className="text-foreground">Editar Perfil</h1>
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
+              ← Voltar ao Menu
+            </Button>
+            <h1 className="text-foreground">Editar Perfil</h1>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setCurrentScreen("profile")} className="border-red-700/50 text-red-300 hover:bg-red-900/30">
               <Eye className="h-4 w-4 mr-2" />
@@ -1725,8 +1730,11 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
 
             {/* Avatar */}
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Avatar</CardTitle>
+                <Button variant="outline" size="sm" onClick={() => setCurrentScreen("dashboard")}>
+                  ← Voltar ao Menu
+                </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">

@@ -203,7 +203,8 @@ export function CalendarAgenda({ userType, userId }: CalendarAgendaProps) {
     }
   };
 
-  const EventForm = ({ isEdit = false }) => (
+  // Render helper (não é um componente): evita remontar os inputs a cada tecla.
+  const renderEventForm = (isEdit = false) => (
     <div className="space-y-4">
       <Tabs defaultValue="basic" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
@@ -420,7 +421,7 @@ export function CalendarAgenda({ userType, userId }: CalendarAgendaProps) {
                       Configure os detalhes da sua próxima sessão de RPG
                     </DialogDescription>
                   </DialogHeader>
-                  <EventForm />
+                  {renderEventForm(false)}
                 </DialogContent>
               </Dialog>
             )}
@@ -564,7 +565,7 @@ export function CalendarAgenda({ userType, userId }: CalendarAgendaProps) {
                                         Modifique os detalhes da sessão
                                       </DialogDescription>
                                     </DialogHeader>
-                                    <EventForm isEdit />
+                                    {renderEventForm(true)}
                                   </DialogContent>
                                 </Dialog>
                                 <Button 
