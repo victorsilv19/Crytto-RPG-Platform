@@ -3,17 +3,19 @@ type Screen = "landing" | "dashboard" | "stream" | "profile" | "marketplace" | "
 
 const CURRENT_SCREEN_KEY = "crytto-current-screen";
 
+const screenKey = (userId?: string) => (userId ? `${CURRENT_SCREEN_KEY}:${userId}` : CURRENT_SCREEN_KEY);
+
 // Telas que não devem ser persistidas (transitórias)
 const UNPERSISTABLE_SCREENS: Screen[] = ["user-type-selection", "immersive-intro", "character-sheet"];
 
-export function saveCurrentScreen(screen: Screen): void {
+export function saveCurrentScreen(screen: Screen, userId?: string): void {
   if (!UNPERSISTABLE_SCREENS.includes(screen)) {
-    localStorage.setItem(CURRENT_SCREEN_KEY, screen);
+    localStorage.setItem(screenKey(userId), screen);
   }
 }
 
-export function getLastScreen(defaultScreen: Screen): Screen {
-  const saved = localStorage.getItem(CURRENT_SCREEN_KEY);
+export function getLastScreen(defaultScreen: Screen, userId?: string): Screen {
+  const saved = localStorage.getItem(screenKey(userId));
   if (saved && isValidScreen(saved)) {
     return saved as Screen;
   }
@@ -30,6 +32,6 @@ function isValidScreen(value: string): value is Screen {
   return validScreens.includes(value as Screen);
 }
 
-export function clearNavigationState(): void {
-  localStorage.removeItem(CURRENT_SCREEN_KEY);
+export function clearNavigationState(userId?: string): void {
+  localStorage.removeItem(screenKey(userId));
 }

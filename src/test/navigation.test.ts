@@ -35,4 +35,10 @@ describe("navigation", () => {
     localStorage.setItem("crytto-current-screen", "tela-inexistente");
     expect(getLastScreen("dashboard")).toBe("dashboard");
   });
+
+  it("deve isolar a última tela por usuário", () => {
+    saveCurrentScreen("profile", "user-a");
+    expect(getLastScreen("dashboard", "user-a")).toBe("profile");
+    expect(getLastScreen("dashboard", "user-b")).toBe("dashboard");
+  });
 });

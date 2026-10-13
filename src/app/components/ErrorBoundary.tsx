@@ -1,4 +1,6 @@
 import React from "react";
+import { getCurrentUser } from "../lib/auth";
+import { userKey } from "../lib/userStorage";
 
 interface State {
   error: Error | null;
@@ -18,7 +20,7 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
 
   private recover = () => {
     // Volta para o dashboard: a última tela salva pode ser justamente a que falhou.
-    localStorage.setItem("crytto-current-screen", "dashboard");
+    localStorage.setItem(userKey("crytto-current-screen", getCurrentUser()?.id), "dashboard");
     this.setState({ error: null });
   };
 

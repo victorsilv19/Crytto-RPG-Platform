@@ -3,6 +3,7 @@ import { usersApi } from "./lib/api";
 import { getCurrentUser, logout as authLogout, updateCurrentUserId, type SessionUser } from "./lib/auth";
 import { listCharacters, upsertCharacter, type StoredCharacter } from "./lib/characterStore";
 import { saveCurrentScreen, getLastScreen } from "./lib/navigation";
+import { userKey, migrateUserKeys } from "./lib/userStorage";
 import { charactersApi } from "./lib/api";
 import { AuthScreen } from "./components/AuthScreen";
 import { Achievements } from "./components/Achievements";
@@ -42,31 +43,33 @@ import { Dice6, Map, CloudRain, Volume2, Sparkles, Settings, Upload, Save, X, Im
 type Screen = "landing" | "dashboard" | "stream" | "profile" | "marketplace" | "profile-edit" | "immersive-intro" | "character-sheet" | "audio-center" | "customizer" | "character-manager" | "replay-player" | "enhanced-marketplace" | "crytts-shop" | "calendar" | "theme-customizer" | "user-type-selection" | "achievements";
 
 function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
+  // Chaves de localStorage desta conta (ver lib/userStorage.ts).
+  const storageKey = (base: string) => userKey(base, userIdRef.current);
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
     // Se não tiver tipo de usuário selecionado, mostra a tela de seleção
-    const hasUserType = localStorage.getItem("userTypeSelected");
+    const hasUserType = localStorage.getItem(userKey("userTypeSelected", user.id));
     if (!hasUserType) return "user-type-selection";
     // Restore last visited screen from localStorage, default to dashboard if none
-    return getLastScreen("dashboard");
+    return getLastScreen("dashboard", user.id);
   });
   const [sidebarActive, setSidebarActive] = useState("home");
   const [cryttsBalance, setCryttsBalance] = useState(() => {
-    const saved = localStorage.getItem('crytto-balance');
+    const saved = localStorage.getItem(userKey('crytto-balance', user.id));
     return saved ? parseInt(saved) : 1250;
   });
   const [userType, setUserType] = useState<"master" | "player">(() => {
-    return (localStorage.getItem("userTypeSelected") as "master" | "player") || "master";
+    return (localStorage.getItem(userKey("userTypeSelected", user.id)) as "master" | "player") || "master";
   });
   
   // Profile edit state with localStorage persistence
   const [profileData, setProfileData] = useState(() => {
-    const saved = localStorage.getItem('crytto-profile-data');
+    const saved = localStorage.getItem(userKey('crytto-profile-data', user.id));
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === "object") return parsed;
       } catch {
-        localStorage.removeItem('crytto-profile-data');
+        localStorage.removeItem(userKey('crytto-profile-data', user.id));
       }
     }
     return {
@@ -125,13 +128,14 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
       try {
         const user = await usersApi.ensure(userId, username, userType);
         if (user.id !== userId) {
+          migrateUserKeys(userId, user.id);
           userIdRef.current = user.id;
           updateCurrentUserId(user.id);
         }
         if (cancelled) return;
 
         setCryttsBalance(user.balance);
-        localStorage.setItem("crytto-balance", String(user.balance));
+        localStorage.setItem(storageKey("crytto-balance"), String(user.balance));
 
         const settings = (user.settings || {}) as Record<string, unknown>;
         setProfileData((prev: any) => {
@@ -145,7 +149,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
             avatarUrl: user.avatar_url ?? prev.avatarUrl,
             ...settings,
           };
-          localStorage.setItem("crytto-profile-data", JSON.stringify(merged));
+          localStorage.setItem(storageKey("crytto-profile-data"), JSON.stringify(merged));
           return merged;
         });
       } catch (err) {
@@ -185,7 +189,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
 
   // Persist current screen to localStorage when it changes
   useEffect(() => {
-    saveCurrentScreen(currentScreen);
+    saveCurrentScreen(currentScreen, userIdRef.current);
     // Sync sidebar active item with current screen
     if (currentScreen === "dashboard" || currentScreen === "landing") setSidebarActive("home");
     else if (currentScreen === "profile" || currentScreen === "profile-edit") setSidebarActive("profile");
@@ -283,7 +287,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
       const newAvatarUrl = updatedUser.avatar_url || "";
       setProfileData((prev: any) => {
         const merged = { ...prev, avatarUrl: newAvatarUrl };
-        localStorage.setItem("crytto-profile-data", JSON.stringify(merged));
+        localStorage.setItem(storageKey("crytto-profile-data"), JSON.stringify(merged));
         return merged;
       });
       toast.success("📸 Avatar enviado para o Cloud Storage!");
@@ -959,7 +963,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
                   if (newBio !== null) {
                     const updatedProfile = {...profileData, bio: newBio};
                     setProfileData(updatedProfile);
-                    localStorage.setItem('crytto-profile-data', JSON.stringify(updatedProfile));
+                    localStorage.setItem(storageKey('crytto-profile-data'), JSON.stringify(updatedProfile));
                     toast.success("✏️ Biografia atualizada!");
                   }
                 }}
@@ -2023,7 +2027,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
             userId={userIdRef.current}
             onBalanceChange={(newBalance) => {
               setCryttsBalance(newBalance);
-              localStorage.setItem('crytto-balance', newBalance.toString());
+              localStorage.setItem(storageKey('crytto-balance'), newBalance.toString());
             }}
             onPurchase={(item) => {
               toast.success(`🎉 ${item.title} adquirido com sucesso!`);
@@ -2048,7 +2052,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
           onPurchase={(amount, price) => {
             const newBalance = cryttsBalance + amount;
             setCryttsBalance(newBalance);
-            localStorage.setItem('crytto-balance', newBalance.toString());
+            localStorage.setItem(storageKey('crytto-balance'), newBalance.toString());
           }}
         />
       </div>
@@ -2107,7 +2111,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
               <UserTypeSelection 
                 onSelectUserType={(type) => {
                   setUserType(type);
-                  localStorage.setItem("userTypeSelected", type);
+                  localStorage.setItem(storageKey("userTypeSelected"), type);
                   setCurrentScreen("landing");
                   toast.success(`✨ Bem-vindo! Você é um ${type === "master" ? "Mestre de RPG" : "Jogador"}`);
                 }}
