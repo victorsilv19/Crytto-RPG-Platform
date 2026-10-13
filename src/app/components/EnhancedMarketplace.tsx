@@ -82,24 +82,35 @@ function fromApi(i: ApiMarketplaceItem, ownedIds: Set<string>): MarketplaceItem 
 export function EnhancedMarketplace({ userType, balance, userId, onBalanceChange, onPurchase }: EnhancedMarketplaceProps) {
   const [items, setItems] = useState<MarketplaceItem[]>([]);
   const [ownedIds, setOwnedIds] = useState<Set<string>>(new Set());
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
+    setLoadState("loading");
     (async () => {
       try {
-        const [rawItems, owned] = await Promise.all([
-          marketplaceApi.list(),
-          marketplaceApi.purchases(userId),
-        ]);
+        const rawItems = await marketplaceApi.list();
+        // Compras já feitas são complementares: se falharem, a vitrine ainda deve aparecer.
+        const owned = await marketplaceApi.purchases(userId).catch((err) => {
+          console.warn("[crytto] falha ao carregar compras:", err);
+          return [] as string[];
+        });
+        if (cancelled) return;
         const ownedSet = new Set(owned);
         setOwnedIds(ownedSet);
         setItems(rawItems.map(i => fromApi(i, ownedSet)));
+        setLoadState("ready");
       } catch (err) {
+        if (cancelled) return;
         console.warn("[crytto] falha ao carregar marketplace:", err);
         toast.error("Não foi possível carregar o marketplace.");
+        setLoadState("error");
       }
     })();
-  }, [userId]);
+    return () => { cancelled = true; };
+  }, [userId, reloadKey]);
 
   const [cart, setCart] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -681,7 +692,23 @@ export function EnhancedMarketplace({ userType, balance, userId, onBalanceChange
         })}
       </div>
       
-      {filteredItems.length === 0 && (
+      {filteredItems.length === 0 && loadState === "loading" && (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">Carregando marketplace…</CardContent>
+        </Card>
+      )}
+
+      {loadState === "error" && (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <h3 className="text-lg font-medium mb-2">Não foi possível carregar o marketplace</h3>
+            <p className="text-muted-foreground mb-4">Verifique a conexão com o servidor e tente novamente.</p>
+            <Button onClick={() => setReloadKey((k) => k + 1)}>Tentar novamente</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {filteredItems.length === 0 && loadState === "ready" && (
         <Card>
           <CardContent className="py-12 text-center">
             <Search className="h-16 w-16 mx-auto mb-4 text-muted-foreground/50" />

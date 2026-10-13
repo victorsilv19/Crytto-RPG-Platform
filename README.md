@@ -45,13 +45,27 @@
   ```
 
   Depois abra `http://localhost`. O nginx do frontend faz proxy de `/api/*` para o backend.
+  O compose também sobe um emulador do Google Cloud Storage (`fake-gcs-server`, porta 4443) — veja a demonstração abaixo.
 
-  Para rodar somente o frontend em modo dev (Vite):
+  Para rodar somente o frontend em modo dev (Vite; `/api` é encaminhado para `http://localhost:3001`):
 
   ```bash
   npm install
   npm run dev
   ```
+
+  ## Cloud Storage (upload de avatar)
+
+  O avatar do perfil é enviado pelo backend (`POST /api/users/:id/avatar`, multipart, campo `avatar`, até 5MB)
+  para um bucket do Google Cloud Storage; a URL pública do objeto é salva em `users.avatar_url`.
+
+  - **Produção:** `setup-gcs-bucket.ps1` cria o bucket e as permissões; `deploy.ps1`/CI definem `GCS_BUCKET_NAME`.
+    A autenticação usa a service account do Cloud Run (sem chave JSON).
+  - **Demo local:** `docker compose up --build` já aponta o backend para o emulador (`GCS_EMULATOR_HOST`).
+
+  Roteiro de demonstração: entrar → Meu Perfil → Editar Perfil → botão de upload → escolher imagem.
+  O avatar aparece no cabeçalho e o objeto pode ser conferido em `GET /api/storage/avatars`
+  (ou, em produção, no console do Cloud Storage / `gcloud storage ls gs://<bucket>/avatars/`).
 
   ## Deploy no Google Cloud Run
 

@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
+import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import '../styles/globals.css'
 
 // Apply theme on load
@@ -8,16 +9,22 @@ const savedTheme = localStorage.getItem('crytto-theme');
 if (savedTheme && savedTheme !== 'default') {
   const savedCustomColors = localStorage.getItem('crytto-custom-colors');
   if (savedTheme === 'custom' && savedCustomColors) {
-    const customColors = JSON.parse(savedCustomColors);
-    const root = document.documentElement;
-    Object.entries(customColors).forEach(([key, value]) => {
-      root.style.setProperty(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`, value as string);
-    });
+    try {
+      const customColors = JSON.parse(savedCustomColors);
+      const root = document.documentElement;
+      Object.entries(customColors).forEach(([key, value]) => {
+        root.style.setProperty(`--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`, value as string);
+      });
+    } catch {
+      localStorage.removeItem('crytto-custom-colors');
+    }
   }
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 )
