@@ -30,7 +30,10 @@ pool.on("error", (err) => {
   console.error("[pg-pool-error] client ocioso falhou, pool seguirá operando:", err.message);
 });
 
-app.use(cors({ origin: process.env.FRONTEND_URL || true }));
+// FRONTEND_URL aceita várias origens separadas por ";" — o Cloud Run expõe o mesmo serviço
+// em duas URLs (…-xxxx-uc.a.run.app e …-<numero-projeto>.<regiao>.run.app) e ambas precisam passar.
+const allowedOrigins = (process.env.FRONTEND_URL || "").split(/[;\s]+/).filter(Boolean);
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : true }));
 app.use(express.json({ limit: "1mb" }));
 
 async function initDb() {

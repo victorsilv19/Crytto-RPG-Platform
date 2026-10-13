@@ -235,11 +235,13 @@ jobs:
           echo "url=$FRONTEND_URL" >> $GITHUB_OUTPUT
 
       # ----- Atualizar CORS do Backend -----
+      # O serviço responde em duas URLs; liberamos as duas (separadas por ";").
       - name: Restringir CORS do Backend para a URL do Frontend
         run: |
+          ALT_URL="https://crytto-frontend-1046925907201.${REGION}.run.app"
           gcloud run services update crytto-backend \
             --region $REGION \
-            --update-env-vars "FRONTEND_URL=${{ steps.frontend-url.outputs.url }}" \
+            --update-env-vars "FRONTEND_URL=${{ steps.frontend-url.outputs.url }};${ALT_URL}" \
             --project $PROJECT_ID
 
       # ----- Validação do Deploy -----
