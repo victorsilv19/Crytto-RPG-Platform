@@ -53,6 +53,47 @@
   npm run dev
   ```
 
+  ## Execução local com Minikube
+
+  A implantação no Kubernetes usa os mesmos fontes da aplicação e executa frontend, backend, banco e emulador de storage dentro do cluster. O deploy abaixo constrói as imagens diretamente no Minikube, sem publicá-las em um registry.
+
+  ### Pré-requisitos
+
+  - Docker instalado e em execução.
+  - Minikube e `kubectl` instalados e disponíveis no `PATH`.
+  - PowerShell para executar o script de implantação.
+  - Manifestos da equipe em `k8s/`: namespace, configuração, Postgres, GCS, backend e frontend.
+
+  ### Implantar do zero
+
+  Na raiz do repositório, execute:
+
+  ```powershell
+  .\k8s\deploy.ps1
+  ```
+
+  O script inicia o Minikube, constrói `crytto-backend:latest` e `crytto-frontend:latest` dentro do cluster, aplica os manifestos nesta ordem e aguarda os Deployments ficarem prontos. Os manifestos das imagens devem usar `imagePullPolicy: Never` ou `IfNotPresent`.
+
+  Confira os recursos e abra o endereço local do frontend:
+
+  ```powershell
+  kubectl get pods,svc,deployments -n crytto
+  minikube service frontend -n crytto --url
+  ```
+
+  Use a URL impressa pelo último comando no navegador. O acesso às imagens de avatar depende da URL pública do serviço GCS configurada para o ambiente Minikube.
+
+  ### Problemas comuns
+
+  - **Docker indisponível:** inicie o Docker antes de executar `.\k8s\deploy.ps1`; se necessário, inicie o cluster com `minikube start --driver=docker`.
+  - **Manifesto ausente:** confira os seis arquivos listados em `k8s/`. O script interrompe a execução e informa os arquivos faltantes antes de iniciar o cluster.
+  - **Imagem não encontrada (`ImagePullBackOff`):** confirme que o build do Minikube terminou e que os Deployments usam `crytto-backend:latest` / `crytto-frontend:latest` com `imagePullPolicy: Never` ou `IfNotPresent`.
+  - **Pod ou volume pendente:** investigue com `kubectl describe pod -n crytto <pod>` e `kubectl describe pvc -n crytto <pvc>`.
+  - **API indisponível:** confira o proxy `/api` do Nginx e os logs com `kubectl logs deployment/backend -n crytto`; confirme também que o backend espera o Postgres ficar pronto.
+  - **Avatares não carregam:** confira se `GCS_PUBLIC_BASE_URL` aponta para um endereço alcançável pelo navegador, e não para o DNS interno do cluster.
+
+  A sequência para demonstrar réplicas, balanceamento e recuperação automática está em [DIVISAO-KUBERNETES.md](./DIVISAO-KUBERNETES.md). As evidências da execução devem ser salvas em [docs/evidencias/](./docs/evidencias/).
+
   ## Deploy no Google Cloud Run
 
   ### Deploy Automatizado (CI/CD)
