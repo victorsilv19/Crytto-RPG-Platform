@@ -10,6 +10,7 @@ jest.mock("pg", () => {
     Pool: jest.fn().mockImplementation(() => ({
       query: mockQuery,
       connect: mockConnect,
+      on: jest.fn(),
     })),
   };
 });
@@ -227,6 +228,22 @@ describe("API Crytto RPG Platform", () => {
 
       expect(res.status).toBe(201);
       expect(res.body).toEqual(created);
+    });
+  });
+
+  describe("Cloud Storage (avatar)", () => {
+    it("POST /api/users/:id/avatar deve retornar 503 quando o bucket não está configurado", async () => {
+      const res = await request(app)
+        .post("/api/users/user-1/avatar")
+        .attach("avatar", Buffer.from("x"), { filename: "a.png", contentType: "image/png" });
+
+      expect(res.status).toBe(503);
+    });
+
+    it("GET /api/storage/avatars deve retornar 503 quando o bucket não está configurado", async () => {
+      const res = await request(app).get("/api/storage/avatars");
+
+      expect(res.status).toBe(503);
     });
   });
 });

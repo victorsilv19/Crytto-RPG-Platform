@@ -1,8 +1,14 @@
 const express = require("express");
 const cors = require("cors");
+const multer = require("multer");
 const { Pool } = require("pg");
+const { uploadAvatar, listAvatars, isStorageConfigured } = require("./storage");
 
 const app = express();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
 
 // Managed Postgres (Neon/Supabase) requires TLS; local docker Postgres does not.
 const dbUrl = process.env.DATABASE_URL || "";
@@ -10,9 +16,24 @@ const useSSL = process.env.PGSSL !== "false" && !/localhost|127\.0\.0\.1|@db[:/]
 const pool = new Pool({
   connectionString: dbUrl,
   ssl: useSSL ? { rejectUnauthorized: false } : false,
+  // Conexões gerenciadas (Neon) derrubam clients ociosos pelo lado do servidor;
+  // fechamos antes disso para não depender da rede acusar o erro primeiro.
+  max: 5,
+  idleTimeoutMillis: 25_000,
 });
 
-app.use(cors({ origin: process.env.FRONTEND_URL || true }));
+// Sem esse listener, um erro em um client ocioso do pool (ex.: Neon encerrando a
+// conexão por inatividade) vira uma exceção não tratada e derruba o processo
+// inteiro do Node — o Cloud Run então reinicia o container, causando os erros
+// de CORS/"banco desconectado" vistos no frontend durante o restart.
+pool.on("error", (err) => {
+  console.error("[pg-pool-error] client ocioso falhou, pool seguirá operando:", err.message);
+});
+
+// FRONTEND_URL aceita várias origens separadas por ";" — o Cloud Run expõe o mesmo serviço
+// em duas URLs (…-xxxx-uc.a.run.app e …-<numero-projeto>.<regiao>.run.app) e ambas precisam passar.
+const allowedOrigins = (process.env.FRONTEND_URL || "").split(/[;\s]+/).filter(Boolean);
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : true }));
 app.use(express.json({ limit: "1mb" }));
 
 async function initDb() {
@@ -166,6 +187,39 @@ app.put("/api/users/:id", async (req, res, next) => {
     );
     if (rows.length === 0) return res.status(404).json({ error: "Usuário não encontrado" });
     res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// Recebe a imagem (multipart/form-data, campo "avatar"), sobe para o Cloud Storage
+// e persiste a URL pública resultante na coluna avatar_url do usuário.
+app.post("/api/users/:id/avatar", upload.single("avatar"), async (req, res, next) => {
+  if (!isStorageConfigured()) {
+    return res.status(503).json({ error: "Upload de avatar indisponível: GCS_BUCKET_NAME não configurado" });
+  }
+  if (!req.file) {
+    return res.status(400).json({ error: "Envie o arquivo no campo 'avatar'" });
+  }
+  try {
+    const avatarUrl = await uploadAvatar(req.file.buffer, req.file.mimetype, req.params.id);
+    const { rows } = await pool.query(
+      "UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING *",
+      [avatarUrl, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Usuário não encontrado" });
+    res.json(rows[0]);
+  } catch (err) {
+    if (err.message?.includes("não suportado")) return res.status(415).json({ error: err.message });
+    next(err);
+  }
+});
+
+// Lista os avatares armazenados no bucket (útil para mostrar o Cloud Storage na demonstração).
+app.get("/api/storage/avatars", async (_req, res, next) => {
+  if (!isStorageConfigured()) {
+    return res.status(503).json({ error: "Cloud Storage indisponível: GCS_BUCKET_NAME não configurado" });
+  }
+  try {
+    res.json(await listAvatars());
   } catch (err) { next(err); }
 });
 
@@ -462,6 +516,11 @@ app.get("/health", async (_, res) => {
 });
 
 app.use((err, _req, res, _next) => {
+  if (err instanceof multer.MulterError) {
+    const status = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+    const message = err.code === "LIMIT_FILE_SIZE" ? "Arquivo maior que 5MB" : err.message;
+    return res.status(status).json({ error: message });
+  }
   console.error("[api-error]", err);
   res.status(500).json({ error: "Erro interno do servidor" });
 });

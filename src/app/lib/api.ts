@@ -139,6 +139,25 @@ export const usersApi = {
       body: JSON.stringify({ balance }),
     });
   },
+  // Upload real de imagem: vai como multipart/form-data (sem Content-Type manual,
+  // o browser define o boundary), diferente do helper `request` usado acima.
+  async uploadAvatar(id: string, file: File) {
+    const form = new FormData();
+    form.append("avatar", file);
+    const res = await fetch(`${API_BASE}/api/users/${id}/avatar`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`;
+      try {
+        const body = await res.json();
+        if (body?.error) message = body.error;
+      } catch { /* corpo não-JSON */ }
+      throw new Error(message);
+    }
+    return res.json() as Promise<ApiUser>;
+  },
 };
 
 // --- Characters ---

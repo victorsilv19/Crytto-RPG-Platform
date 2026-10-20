@@ -3,6 +3,7 @@ import { usersApi } from "./lib/api";
 import { getCurrentUser, logout as authLogout, updateCurrentUserId, type SessionUser } from "./lib/auth";
 import { listCharacters, upsertCharacter, type StoredCharacter } from "./lib/characterStore";
 import { saveCurrentScreen, getLastScreen } from "./lib/navigation";
+import { userKey, migrateUserKeys } from "./lib/userStorage";
 import { charactersApi } from "./lib/api";
 import { AuthScreen } from "./components/AuthScreen";
 import { Achievements } from "./components/Achievements";
@@ -29,7 +30,7 @@ import { Badge } from "./components/ui/badge";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
-import { Avatar, AvatarFallback } from "./components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "./components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Separator } from "./components/ui/separator";
@@ -37,32 +38,39 @@ import { Textarea } from "./components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 import { Switch } from "./components/ui/switch";
 import { Label } from "./components/ui/label";
-import { Dice6, Map, CloudRain, Volume2, Sparkles, Settings, Upload, Save, X, Image, Palette, Eye, Layers, Link, Bell, Shield, Zap, Users, Crown, User, Play, Pause, Square, Mic, MicOff, Camera, CameraOff, MonitorSpeaker, Music, Film, AlertCircle, Timer, RotateCcw, FileUser, Headphones, Edit, Calendar, Coins, ShoppingCart } from "lucide-react";
+import { Dice6, Map, CloudRain, Volume2, Sparkles, Settings, Upload, Save, X, Image, Palette, Eye, Layers, Link, Bell, Shield, Zap, Users, Crown, User, Play, Pause, Square, Mic, MicOff, Camera, CameraOff, MonitorSpeaker, Music, Film, AlertCircle, Timer, RotateCcw, FileUser, Headphones, Edit, Calendar, Coins, ShoppingCart, MapPin, Scroll, TrendingUp } from "lucide-react";
 
 type Screen = "landing" | "dashboard" | "stream" | "profile" | "marketplace" | "profile-edit" | "immersive-intro" | "character-sheet" | "audio-center" | "customizer" | "character-manager" | "replay-player" | "enhanced-marketplace" | "crytts-shop" | "calendar" | "theme-customizer" | "user-type-selection" | "achievements";
 
 function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
+  // Chaves de localStorage desta conta (ver lib/userStorage.ts).
+  const storageKey = (base: string) => userKey(base, userIdRef.current);
   const [currentScreen, setCurrentScreen] = useState<Screen>(() => {
     // Se não tiver tipo de usuário selecionado, mostra a tela de seleção
-    const hasUserType = localStorage.getItem("userTypeSelected");
+    const hasUserType = localStorage.getItem(userKey("userTypeSelected", user.id));
     if (!hasUserType) return "user-type-selection";
     // Restore last visited screen from localStorage, default to dashboard if none
-    return getLastScreen("dashboard");
+    return getLastScreen("dashboard", user.id);
   });
   const [sidebarActive, setSidebarActive] = useState("home");
   const [cryttsBalance, setCryttsBalance] = useState(() => {
-    const saved = localStorage.getItem('crytto-balance');
+    const saved = localStorage.getItem(userKey('crytto-balance', user.id));
     return saved ? parseInt(saved) : 1250;
   });
   const [userType, setUserType] = useState<"master" | "player">(() => {
-    return (localStorage.getItem("userTypeSelected") as "master" | "player") || "master";
+    return (localStorage.getItem(userKey("userTypeSelected", user.id)) as "master" | "player") || "master";
   });
   
   // Profile edit state with localStorage persistence
   const [profileData, setProfileData] = useState(() => {
-    const saved = localStorage.getItem('crytto-profile-data');
+    const saved = localStorage.getItem(userKey('crytto-profile-data', user.id));
     if (saved) {
-      return JSON.parse(saved);
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object") return parsed;
+      } catch {
+        localStorage.removeItem(userKey('crytto-profile-data', user.id));
+      }
     }
     return {
       username: "MestreEpico",
@@ -120,13 +128,14 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
       try {
         const user = await usersApi.ensure(userId, username, userType);
         if (user.id !== userId) {
+          migrateUserKeys(userId, user.id);
           userIdRef.current = user.id;
           updateCurrentUserId(user.id);
         }
         if (cancelled) return;
 
         setCryttsBalance(user.balance);
-        localStorage.setItem("crytto-balance", String(user.balance));
+        localStorage.setItem(storageKey("crytto-balance"), String(user.balance));
 
         const settings = (user.settings || {}) as Record<string, unknown>;
         setProfileData((prev: any) => {
@@ -140,7 +149,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
             avatarUrl: user.avatar_url ?? prev.avatarUrl,
             ...settings,
           };
-          localStorage.setItem("crytto-profile-data", JSON.stringify(merged));
+          localStorage.setItem(storageKey("crytto-profile-data"), JSON.stringify(merged));
           return merged;
         });
       } catch (err) {
@@ -180,7 +189,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
 
   // Persist current screen to localStorage when it changes
   useEffect(() => {
-    saveCurrentScreen(currentScreen);
+    saveCurrentScreen(currentScreen, userIdRef.current);
     // Sync sidebar active item with current screen
     if (currentScreen === "dashboard" || currentScreen === "landing") setSidebarActive("home");
     else if (currentScreen === "profile" || currentScreen === "profile-edit") setSidebarActive("profile");
@@ -257,10 +266,37 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
       showAuth={false}
       balance={cryttsBalance}
       userType={userType}
+      avatarUrl={profileData.avatarUrl}
       onProfileClick={() => setCurrentScreen("profile")}
       onLogout={handleLogout}
     />
   );
+
+  // Upload real de avatar: dispara o <input type="file"> oculto e, ao selecionar,
+  // sobe a imagem para o Cloud Storage via backend e atualiza o estado/local storage.
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite selecionar o mesmo arquivo de novo depois
+    if (!file) return;
+    setIsUploadingAvatar(true);
+    try {
+      const updatedUser = await usersApi.uploadAvatar(userIdRef.current, file);
+      const newAvatarUrl = updatedUser.avatar_url || "";
+      setProfileData((prev: any) => {
+        const merged = { ...prev, avatarUrl: newAvatarUrl };
+        localStorage.setItem(storageKey("crytto-profile-data"), JSON.stringify(merged));
+        return merged;
+      });
+      toast.success("📸 Avatar enviado para o Cloud Storage!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao enviar avatar");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   const renderLandingPage = () => {
     if (showImmersiveIntro) {
@@ -886,8 +922,9 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
         <div className="flex items-center gap-4 mb-6">
           <div className="relative">
             <Avatar className="h-20 w-20">
+              <AvatarImage src={profileData.avatarUrl} alt={profileData.displayName} />
               <AvatarFallback className="bg-red-900/30 border border-red-700/50 text-red-200">
-                {profileData.displayName.substring(0, 2)}
+                {String(profileData.displayName || "CR").substring(0, 2)}
               </AvatarFallback>
             </Avatar>
             <Button
@@ -901,7 +938,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-foreground">{profileData.displayName}</h2>
+              <h2 className="text-foreground">{profileData.displayName || "Meu Perfil"}</h2>
               <Badge variant="outline" className={userType === "master" ? "border-red-700/50 text-red-300" : "border-blue-700/50 text-blue-300"}>
                 {userType === "master" ? (
                   <>
@@ -926,7 +963,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
                   if (newBio !== null) {
                     const updatedProfile = {...profileData, bio: newBio};
                     setProfileData(updatedProfile);
-                    localStorage.setItem('crytto-profile-data', JSON.stringify(updatedProfile));
+                    localStorage.setItem(storageKey('crytto-profile-data'), JSON.stringify(updatedProfile));
                     toast.success("✏️ Biografia atualizada!");
                   }
                 }}
@@ -1472,7 +1509,12 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
       {/* Header with preview */}
       <div className="border-b border-border px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <h1 className="text-foreground">Editar Perfil</h1>
+          <div className="flex items-center gap-4">
+            <Button variant="outline" onClick={() => setCurrentScreen("dashboard")}>
+              ← Voltar ao Menu
+            </Button>
+            <h1 className="text-foreground">Editar Perfil</h1>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setCurrentScreen("profile")} className="border-red-700/50 text-red-300 hover:bg-red-900/30">
               <Eye className="h-4 w-4 mr-2" />
@@ -1688,14 +1730,18 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
 
             {/* Avatar */}
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Avatar</CardTitle>
+                <Button variant="outline" size="sm" onClick={() => setCurrentScreen("dashboard")}>
+                  ← Voltar ao Menu
+                </Button>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
                   <Avatar className="h-20 w-20">
+                    <AvatarImage src={profileData.avatarUrl} alt={profileData.displayName} />
                     <AvatarFallback className="bg-red-900/30 border border-red-700/50 text-red-200">
-                      {profileData.displayName.substring(0, 2)}
+                      {String(profileData.displayName || "CR").substring(0, 2)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
@@ -1707,10 +1753,25 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
                         placeholder="https://example.com/avatar.jpg"
                         className="flex-1"
                       />
-                      <Button variant="outline" className="border-red-700/50 text-red-300 hover:bg-red-900/30">
+                      <input
+                        ref={avatarFileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleAvatarFileChange}
+                      />
+                      <Button
+                        variant="outline"
+                        className="border-red-700/50 text-red-300 hover:bg-red-900/30"
+                        disabled={isUploadingAvatar}
+                        onClick={() => avatarFileInputRef.current?.click()}
+                      >
                         <Upload className="h-4 w-4" />
                       </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {isUploadingAvatar ? "Enviando para o Cloud Storage…" : "Cole uma URL ou envie um arquivo (JPEG/PNG/WEBP/GIF, até 5MB)"}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -1779,8 +1840,9 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
                 {/* Mini Profile Info */}
                 <div className="flex items-center gap-3">
                   <Avatar className="h-12 w-12">
+                    <AvatarImage src={profileData.avatarUrl} alt={profileData.displayName} />
                     <AvatarFallback className="bg-red-900/30 border border-red-700/50 text-red-200 text-xs">
-                      {profileData.displayName.substring(0, 2)}
+                      {String(profileData.displayName || "CR").substring(0, 2)}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
@@ -1973,7 +2035,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
             userId={userIdRef.current}
             onBalanceChange={(newBalance) => {
               setCryttsBalance(newBalance);
-              localStorage.setItem('crytto-balance', newBalance.toString());
+              localStorage.setItem(storageKey('crytto-balance'), newBalance.toString());
             }}
             onPurchase={(item) => {
               toast.success(`🎉 ${item.title} adquirido com sucesso!`);
@@ -1998,7 +2060,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
           onPurchase={(amount, price) => {
             const newBalance = cryttsBalance + amount;
             setCryttsBalance(newBalance);
-            localStorage.setItem('crytto-balance', newBalance.toString());
+            localStorage.setItem(storageKey('crytto-balance'), newBalance.toString());
           }}
         />
       </div>
@@ -2057,7 +2119,7 @@ function CryttoApp({ user, onLogout }: { user: SessionUser; onLogout: () => void
               <UserTypeSelection 
                 onSelectUserType={(type) => {
                   setUserType(type);
-                  localStorage.setItem("userTypeSelected", type);
+                  localStorage.setItem(storageKey("userTypeSelected"), type);
                   setCurrentScreen("landing");
                   toast.success(`✨ Bem-vindo! Você é um ${type === "master" ? "Mestre de RPG" : "Jogador"}`);
                 }}

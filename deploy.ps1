@@ -11,6 +11,7 @@ $PROJECT_ID     = "crytto-rpg-2026"
 $REGION         = "us-central1"
 $BACKEND_IMAGE  = "gcr.io/$PROJECT_ID/crytto-backend"
 $FRONTEND_IMAGE = "gcr.io/$PROJECT_ID/crytto-frontend"
+$GCS_BUCKET_NAME = "crytto-rpg-2026-avatars"
 
 if ([string]::IsNullOrEmpty($env:DATABASE_URL)) {
     Write-Error "ERRO: defina DATABASE_URL antes de rodar. Ex.: `$env:DATABASE_URL = 'postgres://...'"
@@ -29,7 +30,7 @@ gcloud run deploy crytto-backend `
   --allow-unauthenticated `
   --port 3001 `
   --memory 512Mi `
-  --set-env-vars "DATABASE_URL=$env:DATABASE_URL" `
+  --set-env-vars "DATABASE_URL=$env:DATABASE_URL,GCS_BUCKET_NAME=$GCS_BUCKET_NAME" `
   --project $PROJECT_ID
 
 $BACKEND_URL = gcloud run services describe crytto-backend `

@@ -1,6 +1,6 @@
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Avatar, AvatarFallback } from "./ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
 import { Crown, User, LogOut } from "lucide-react";
 import logo from "figma:asset/c6cf295c73be3c7dab97aeea7773a75c4bfd1e05.png";
 
@@ -10,11 +10,12 @@ interface HeaderProps {
   showAuth?: boolean;
   balance?: number;
   userType?: "master" | "player";
+  avatarUrl?: string;
   onProfileClick?: () => void;
   onLogout?: () => void;
 }
 
-export function Header({ onLogin, onSignup, showAuth = true, balance, userType, onProfileClick, onLogout }: HeaderProps) {
+export function Header({ onLogin, onSignup, showAuth = true, balance, userType, avatarUrl, onProfileClick, onLogout }: HeaderProps) {
   return (
     <header className="border-b border-red-900/20 bg-gray-900 px-6 py-4">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
@@ -51,6 +52,7 @@ export function Header({ onLogin, onSignup, showAuth = true, balance, userType, 
           
           {!showAuth && onProfileClick && (
             <Avatar className="h-8 w-8 cursor-pointer hover:opacity-80 transition-opacity" onClick={onProfileClick}>
+              <AvatarImage src={avatarUrl} alt="Avatar" />
               <AvatarFallback className="bg-red-900/30 border border-red-700/50 text-red-200 text-xs">
                 ME
               </AvatarFallback>

@@ -14,16 +14,32 @@ services:
       timeout: 5s
       retries: 10
 
+  # Emulador do Google Cloud Storage (mesma API do GCS) para a demonstração offline.
+  # Em produção o backend usa o bucket real e este serviço não é necessário.
+  gcs:
+    image: fsouza/fake-gcs-server:latest
+    restart: unless-stopped
+    command: ["-scheme", "http", "-port", "4443", "-public-host", "localhost:4443", "-external-url", "http://localhost:4443"]
+    volumes:
+      - gcs_data:/storage
+    ports:
+      - "4443:4443"
+
   backend:
     build: ./backend
     restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+      gcs:
+        condition: service_started
     environment:
       PORT: 3001
       DATABASE_URL: postgres://crytto:crytto@db:5432/crytto
       PGSSL: "false"
+      GCS_BUCKET_NAME: crytto-rpg-avatars
+      GCS_EMULATOR_HOST: http://gcs:4443
+      GCS_PUBLIC_BASE_URL: http://localhost:4443
     ports:
       - "3001:3001"
 
@@ -41,3 +57,4 @@ services:
 
 volumes:
   db_data:
+  gcs_data:

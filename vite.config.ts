@@ -29,6 +29,12 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src/app'),
     },
   },
+  server: {
+    // Em dev (npm run dev) o front chama /api; encaminha para o backend local.
+    proxy: {
+      '/api': process.env.VITE_DEV_API_TARGET || 'http://localhost:3001',
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,
