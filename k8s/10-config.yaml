@@ -1,0 +1,35 @@
+# Configuração da aplicação: valores não sensíveis no ConfigMap, credenciais no Secret.
+# As credenciais abaixo são APENAS de demonstração (mesmas do docker-compose.yml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: crytto-config
+  namespace: crytto
+  labels:
+    app.kubernetes.io/part-of: crytto-rpg
+data:
+  # Backend
+  PORT: "3001"
+  PGSSL: "false"
+  # Postgres (usuário e banco não são sensíveis; a senha fica no Secret)
+  POSTGRES_USER: "crytto"
+  POSTGRES_DB: "crytto"
+  # Cloud Storage (emulador fake-gcs-server dentro do cluster)
+  GCS_BUCKET_NAME: "crytto-rpg-avatars"
+  GCS_EMULATOR_HOST: "http://gcs:4443"
+  # URL que o NAVEGADOR usa para baixar os avatares. É relativa: o nginx do frontend
+  # encaminha /storage/ para o Service "gcs" (ver nota em k8s/25-gcs.yaml).
+  GCS_PUBLIC_BASE_URL: "/storage"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: crytto-secret
+  namespace: crytto
+  labels:
+    app.kubernetes.io/part-of: crytto-rpg
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "crytto"
+  # "postgres" é o nome do Service do banco (DNS interno do cluster).
+  DATABASE_URL: "postgres://crytto:crytto@postgres:5432/crytto"

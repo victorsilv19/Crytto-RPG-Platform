@@ -1,0 +1,7 @@
+# Namespace isolado para todos os recursos da aplicação.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: crytto
+  labels:
+    app.kubernetes.io/part-of: crytto-rpg
