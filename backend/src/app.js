@@ -2,12 +2,19 @@ const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const { Pool } = require("pg");
+const os = require("node:os");
 const { uploadAvatar, listAvatars, isStorageConfigured } = require("./storage");
 
 const app = express();
+const podName = os.hostname();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+});
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Served-By", podName);
+  next();
 });
 
 // Managed Postgres (Neon/Supabase) requires TLS; local docker Postgres does not.
@@ -509,9 +516,9 @@ app.delete("/api/calendar/:id", async (req, res, next) => {
 app.get("/health", async (_, res) => {
   try {
     await pool.query("SELECT 1");
-    res.json({ status: "ok", db: "up" });
+    res.json({ status: "ok", db: "up", pod: podName });
   } catch {
-    res.status(503).json({ status: "degraded", db: "down" });
+    res.status(503).json({ status: "degraded", db: "down", pod: podName });
   }
 });
 

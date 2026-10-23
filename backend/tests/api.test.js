@@ -1,11 +1,11 @@
 const request = require("supertest");
+const os = require("node:os");
 
 // Mock do pool do pg antes de importar o app
 const mockQuery = jest.fn();
 const mockConnect = jest.fn();
 
 jest.mock("pg", () => {
-  const { Pool } = jest.requireActual("pg");
   return {
     Pool: jest.fn().mockImplementation(() => ({
       query: mockQuery,
@@ -29,7 +29,8 @@ describe("API Crytto RPG Platform", () => {
       const res = await request(app).get("/health");
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ status: "ok", db: "up" });
+      expect(res.body).toEqual({ status: "ok", db: "up", pod: os.hostname() });
+      expect(res.headers["x-served-by"]).toBe(os.hostname());
     });
 
     it("deve retornar 503 quando o banco está indisponível", async () => {
@@ -38,7 +39,8 @@ describe("API Crytto RPG Platform", () => {
       const res = await request(app).get("/health");
 
       expect(res.status).toBe(503);
-      expect(res.body).toEqual({ status: "degraded", db: "down" });
+      expect(res.body).toEqual({ status: "degraded", db: "down", pod: os.hostname() });
+      expect(res.headers["x-served-by"]).toBe(os.hostname());
     });
   });
 
