@@ -67,20 +67,40 @@ docs/evidencias/          # prints de cada integrante
 
 ---
 
-### Felipe — Backend e alta disponibilidade
+### Victor — Backend e alta disponibilidade
 **Arquivos:** `k8s/30-backend.yaml` e pequena alteração em `backend/src/app.js`
 
-- [ ] **Deployment** do backend com **`replicas: 2`**, lendo variáveis do ConfigMap e do Secret.
-- [ ] `readinessProbe` e `livenessProbe` em `/health`.
-- [ ] **Service** `backend` (ClusterIP, 3001).
-- [ ] **Mudança no código:** devolver o nome do pod (`os.hostname()`) no `/health` e em um header `X-Served-By`. Sem isso não há como **provar o balanceamento** entre os pods.
-- [ ] Garantir o arranque correto: o `initDb` roda ao iniciar e o Postgres pode demorar. Usar `initContainer` que espera o banco, ou retry no backend.
-- [ ] Atualizar os testes do backend se o `/health` mudar.
+- [x] **Deployment** do backend com **`replicas: 2`**, lendo variáveis do ConfigMap e do Secret.
+- [x] `readinessProbe` e `livenessProbe` em `/health`.
+- [x] **Service** `backend` (ClusterIP, 3001).
+- [x] **Mudança no código:** devolver o nome do pod (`os.hostname()`) no `/health` e em um header `X-Served-By`. Sem isso não há como **provar o balanceamento** entre os pods.
+- [x] Garantir o arranque correto: o `initDb` roda ao iniciar e o Postgres pode demorar. Usar `initContainer` que espera o banco, ou retry no backend.
+- [x] Atualizar os testes do backend se o `/health` mudar.
 
 **Evidências:**
 - `kubectl get pods -n crytto -o wide` (2 pods do backend).
 - Laço de `curl` mostrando **nomes de pods diferentes** (balanceamento).
 - Apagar um pod do backend e mostrar o Kubernetes **recriando automaticamente**.
+
+Para coletar as evidências no Minikube, construa a imagem e aplique os manifestos na ordem:
+
+```powershell
+minikube image build -t crytto-backend:latest ./backend
+kubectl apply -f k8s/00-namespace.yaml
+kubectl apply -f k8s/10-config.yaml
+kubectl apply -f k8s/20-postgres.yaml
+kubectl apply -f k8s/30-backend.yaml
+kubectl get pods -n crytto -o wide
+```
+
+Para observar o balanceamento, faça chamadas distintas ao Service de dentro do cluster. O header mostra o pod que respondeu; em seguida, apague um pod e acompanhe a reposição:
+
+```powershell
+kubectl run backend-curl --rm -i --restart=Never --image=curlimages/curl:8.10.1 -n crytto -- sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do curl -sS -D - http://backend:3001/health -o /dev/null | grep -i "^X-Served-By:"; done'
+$pod = kubectl get pods -n crytto -l app=backend -o jsonpath="{.items[0].metadata.name}"
+kubectl delete pod $pod -n crytto
+kubectl get pods -n crytto -l app=backend -w
+```
 
 ---
 
