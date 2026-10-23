@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+node_modules
+dist
+coverage
+backend
+docs
+guidelines
+k8s
+*.log
+.env
+.env.*
+!.env.example
