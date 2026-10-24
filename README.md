@@ -57,12 +57,12 @@
 
   ## Execução no Kubernetes (Minikube)
 
-  Toda a aplicação roda dentro de um cluster **Minikube**: frontend, backend (2 réplicas), banco Postgres e emulador do Cloud Storage. Nenhum componente roda direto na máquina; usamos apenas `minikube` e `kubectl` para construir, implantar e acessar.
+  Toda a aplicação roda dentro de um cluster **Minikube**: frontend (2 réplicas), backend (2 réplicas), banco Postgres e emulador do Cloud Storage. Nenhum componente roda direto na máquina; usamos apenas `minikube` e `kubectl` para construir, implantar e acessar.
 
   ### Arquitetura no cluster
 
   ```
-  Navegador → Service frontend (NodePort) → Pod frontend (nginx)
+  Navegador → Service frontend (NodePort) → 2 Pods frontend (nginx)
                                                 │ /api        │ /storage
                                                 ▼             ▼
                                     Service backend      Service gcs ──► Pod gcs (fake-gcs-server + PVC)
@@ -79,11 +79,11 @@
   | Banco | `postgres:16-alpine` | `PersistentVolumeClaim`, `Deployment`, `Service` (ClusterIP 5432) | [k8s/20-postgres.yaml](./k8s/20-postgres.yaml) |
   | Storage | `fsouza/fake-gcs-server` | `PersistentVolumeClaim`, `Deployment`, `Service` (ClusterIP 4443) | [k8s/25-gcs.yaml](./k8s/25-gcs.yaml) |
   | Backend | `crytto-backend:latest` ([backend/Dockerfile](./backend/Dockerfile)) | `Deployment` (**2 réplicas**), `Service` (ClusterIP 3001) | [k8s/30-backend.yaml](./k8s/30-backend.yaml) |
-  | Frontend | `crytto-frontend:latest` ([Dockerfile](./Dockerfile)) | `Deployment`, `Service` (NodePort 80) | [k8s/40-frontend.yaml](./k8s/40-frontend.yaml) |
+  | Frontend | `crytto-frontend:latest` ([Dockerfile](./Dockerfile)) | `ConfigMap` do nginx, `Deployment` (**2 réplicas**), `Service` (NodePort 30080) | [k8s/40-frontend.yaml](./k8s/40-frontend.yaml) |
 
   Como os componentes se encontram:
   - O backend lê `DATABASE_URL` do Secret e as demais variáveis do ConfigMap. Ele acessa o banco pelo nome do Service, `postgres:5432`, e um `initContainer` espera o banco ficar pronto antes de subir.
-  - O nginx do frontend encaminha `/api/` para o Service `backend` e `/storage/` (avatares) para o Service `gcs`. O navegador fala só com o frontend.
+  - O nginx do frontend encaminha `/api/` para o Service `backend` e `/storage/` (avatares) para o Service `gcs`. O navegador fala só com o frontend. No cluster, essa configuração vem do ConfigMap `frontend-nginx-config`, montado por cima do `nginx.conf` da imagem; o `nginx.conf` da raiz continua sendo o do `docker compose`.
   - Banco e storage usam volumes persistentes (PVC), então os dados sobrevivem à recriação dos Pods.
 
   ### Pré-requisitos

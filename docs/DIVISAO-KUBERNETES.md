@@ -67,7 +67,7 @@ docs/evidencias/          # prints de cada integrante
 
 ---
 
-### Victor — Backend e alta disponibilidade
+### Felipe — Backend e alta disponibilidade
 **Arquivos:** `k8s/30-backend.yaml` e pequena alteração em `backend/src/app.js`
 
 - [x] **Deployment** do backend com **`replicas: 2`**, lendo variáveis do ConfigMap e do Secret.
@@ -107,12 +107,14 @@ kubectl get pods -n crytto -l app=backend -w
 ### Pablo — Frontend, rede e acesso
 **Arquivos:** `k8s/40-frontend.yaml` e ajuste em `nginx.conf`
 
-- [ ] **Deployment** e **Service** do frontend (NodePort, ou Ingress se preferirem).
-- [ ] **Ponto crítico:** o `nginx.conf` atual usa `resolver 127.0.0.11`, que é o DNS do Docker e **não existe no Kubernetes**. Trocar para o DNS do cluster (`kube-dns.kube-system.svc.cluster.local`) e apontar o proxy para `backend.crytto.svc.cluster.local:3001`. Sem isso o `/api` não funciona dentro do cluster.
-- [ ] Manter compatibilidade com o `docker compose` (ou criar um `nginx.k8s.conf` separado).
-- [ ] Resolver a **URL pública das imagens de avatar**: o ConfigMap já define `GCS_PUBLIC_BASE_URL=/storage`, então o backend devolve URLs relativas (`/storage/<bucket>/<objeto>`). Basta o nginx encaminhar `/storage/` para o Service `gcs` com `Host: gcs:4443` (exemplo pronto no comentário de `k8s/25-gcs.yaml`).
-- [ ] Testar o acesso: `minikube service frontend -n crytto --url` (ou `minikube tunnel`).
-- [ ] Conferir no navegador: login, marketplace, perfil e upload de avatar.
+- [x] **Deployment** e **Service** do frontend (NodePort, ou Ingress se preferirem).
+- [x] **Ponto crítico:** o `nginx.conf` atual usa `resolver 127.0.0.11`, que é o DNS do Docker e **não existe no Kubernetes**. Trocar para o DNS do cluster (`kube-dns.kube-system.svc.cluster.local`) e apontar o proxy para `backend.crytto.svc.cluster.local:3001`. Sem isso o `/api` não funciona dentro do cluster.
+- [x] Manter compatibilidade com o `docker compose` (ou criar um `nginx.k8s.conf` separado).
+- [x] Resolver a **URL pública das imagens de avatar**: o ConfigMap já define `GCS_PUBLIC_BASE_URL=/storage`, então o backend devolve URLs relativas (`/storage/<bucket>/<objeto>`). Basta o nginx encaminhar `/storage/` para o Service `gcs` com `Host: gcs:4443` (exemplo pronto no comentário de `k8s/25-gcs.yaml`).
+- [x] Testar o acesso: `minikube service frontend -n crytto --url` (ou `minikube tunnel`).
+- [x] Conferir no navegador: login, marketplace, perfil e upload de avatar.
+
+Solução adotada: a configuração do nginx para o cluster fica no ConfigMap `frontend-nginx-config` (em `k8s/40-frontend.yaml`), montado por cima do `nginx.conf` da imagem. O `nginx.conf` da raiz continua servindo ao `docker compose`.
 
 **Evidências:**
 - Aplicação aberta no navegador (marketplace e perfil funcionando).
@@ -124,14 +126,14 @@ kubectl get pods -n crytto -l app=backend -w
 ### Victor — Imagens, Minikube, README e evidências
 **Arquivos:** `Dockerfile`, `backend/Dockerfile`, `.dockerignore`, `k8s/deploy.ps1`, `README.md`, `docs/evidencias/`
 
-- [ ] Revisar e ajustar os **Dockerfiles** (frontend e backend) e criar `.dockerignore`.
-- [ ] Definir como as imagens chegam ao Minikube:
+- [x] Revisar e ajustar os **Dockerfiles** (frontend e backend) e criar `.dockerignore`.
+- [x] Definir como as imagens chegam ao Minikube:
   - `minikube image build -t crytto-backend:latest ./backend`
   - `minikube image build -t crytto-frontend:latest .`
   - Nos manifestos: `imagePullPolicy: Never` (ou `IfNotPresent`).
-- [ ] Script `k8s/deploy.ps1`: sobe o Minikube, constrói as imagens e aplica os manifestos em ordem.
-- [ ] **README.md** com o passo a passo para reproduzir do zero (pré-requisitos, iniciar o Minikube, disponibilizar as imagens, aplicar os manifestos, acessar a aplicação, problemas comuns).
-- [ ] Reunir as **evidências** de todos em `docs/evidencias/` e conferir a lista de entrega.
+- [x] Script `k8s/deploy.ps1`: sobe o Minikube, constrói as imagens e aplica os manifestos em ordem.
+- [x] **README.md** com o passo a passo para reproduzir do zero (pré-requisitos, iniciar o Minikube, disponibilizar as imagens, aplicar os manifestos, acessar a aplicação, problemas comuns).
+- [ ] Reunir as **evidências** de todos em `docs/evidencias/` (roteiro em `docs/evidencias/README.md`) e conferir a lista de entrega.
 
 **Evidências:**
 - `minikube status`, `minikube start`.
@@ -141,8 +143,8 @@ kubectl get pods -n crytto -l app=backend -w
 
 ## 3. Ordem sugerida
 
-1. **Felipe e Pedro começam juntos:** Minikube e imagens (Felipe), banco e configuração (Pedro).
-2. **Victor e Pablo seguem em paralelo** assim que existir o namespace, o ConfigMap e o `postgres`, mesmo que incompletos.
+1. **Victor e Pedro começam juntos:** Minikube e imagens (Victor), banco e configuração (Pedro).
+2. **Felipe e Pablo seguem em paralelo** assim que existir o namespace, o ConfigMap e o `postgres`, mesmo que incompletos.
 3. **No fim, todos juntos:** teste completo em um cluster limpo (`minikube delete` e subir tudo de novo) e tirada dos prints.
 
 ---
@@ -155,8 +157,8 @@ Todos precisam saber executar isto na apresentação:
 # 1) Réplicas
 kubectl get pods -n crytto -o wide
 
-# 2) Balanceamento: o nome do pod que respondeu deve variar
-for ($i=0; $i -lt 10; $i++) { curl.exe -s http://<URL>/api/health; "" }
+# 2) Balanceamento: o nome do pod que respondeu (X-Served-By) deve variar
+kubectl run backend-curl --rm -i --restart=Never --image=curlimages/curl:8.10.1 -n crytto -- sh -c 'for i in 1 2 3 4 5 6 7 8 9 10; do curl -s -D - http://backend:3001/health -o /dev/null | grep -i "^X-Served-By:"; done'
 
 # 3) Auto-recuperação: apagar um pod e ver o Kubernetes recriar
 kubectl delete pod <nome-do-pod-backend> -n crytto
